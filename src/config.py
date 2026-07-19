@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     gemini_api_key: str = ""
+    # Optional pool of keys (comma-separated). When the daily free-tier quota of
+    # one key is hit (429 PerDay), we rotate to the next -> multiplies daily
+    # capacity. Keys from DIFFERENT Google Cloud projects have independent quotas.
+    gemini_api_keys: str = ""
     gemini_model: str = "gemini-2.5-flash"
     llm_provider: str = "gemini"
     # Min seconds between LLM calls (respect per-minute rate limits, ~15 RPM).
@@ -113,8 +117,21 @@ class Settings(BaseSettings):
         return ids
 
     @property
+    def gemini_key_list(self) -> List[str]:
+        """Ordered, de-duplicated key pool (GEMINI_API_KEYS, else GEMINI_API_KEY)."""
+        raw = [k.strip() for k in self.gemini_api_keys.split(",") if k.strip()]
+        if not raw and self.gemini_api_key.strip():
+            raw = [self.gemini_api_key.strip()]
+        seen, out = set(), []
+        for k in raw:
+            if k not in seen:
+                seen.add(k)
+                out.append(k)
+        return out
+
+    @property
     def llm_enabled(self) -> bool:
-        return bool(self.gemini_api_key.strip())
+        return bool(self.gemini_key_list)
 
 
 @lru_cache(maxsize=1)

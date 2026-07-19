@@ -130,9 +130,17 @@ codziennie od teraz:
 ~10 wywołań (deep-dive + discover), więc **drugi przebieg tego samego dnia
 skończy się błędem 429**. Zabezpieczenia w kodzie: throttling (`LLM_MIN_INTERVAL_
 SECONDS`), retry na przejściowe 429 (`LLM_MAX_RETRIES`) oraz *circuit breaker* —
-po wyczerpaniu limitu dziennego pipeline przerywa zamiast młócić API. Zalecenia:
-uruchamiaj `deep-dive`/`discover` **max raz dziennie**, albo ustaw wyżej-limitowy
-model (`GEMINI_MODEL`), albo włącz płatny plan.
+po wyczerpaniu limitu dziennego pipeline przerywa zamiast młócić API.
+
+**Pula kluczy (zwielokrotnienie limitu).** Ustaw `GEMINI_API_KEYS` na kilka kluczy
+po przecinku — gdy jeden wyczerpie dzienny limit (429 PerDay), aplikacja
+automatycznie rotuje na następny. Klucze z **różnych projektów Google Cloud** mają
+niezależne pule (np. 3 klucze ≈ 60 zapytań/dzień). Circuit breaker aktywuje się
+dopiero, gdy padną wszystkie. (Uwaga: mnożenie projektów wyłącznie dla obejścia
+limitów bywa w szarej strefie ToS Google — na własną odpowiedzialność.)
+
+Inne opcje: uruchamiaj `deep-dive`/`discover` **max raz dziennie**, ustaw
+wyżej-limitowy model (`GEMINI_MODEL`), albo włącz płatny plan.
 
 ## Architektura
 

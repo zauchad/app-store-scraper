@@ -67,10 +67,20 @@ class LLMClient(Protocol):
         ...
 
 
-class GeminiClient:
-    """Gemini implementation using the google-genai SDK."""
+def _is_daily_quota(msg: str) -> bool:
+    return ("PerDay" in msg) or ("per_day" in msg.lower())
 
-    def __init__(self, api_key: str, model: str) -> None:
+
+class GeminiClient:
+    """Gemini via google-genai, with a rotating pool of API keys.
+
+    When one key hits its DAILY free-tier quota (429 PerDay), we mark it spent
+    and rotate to the next key, so several keys (ideally from separate Google
+    Cloud projects) multiply the effective daily capacity. Only when EVERY key is
+    exhausted do we trip the global circuit breaker.
+    """
+
+    def __init__(self, api_keys, model: str) -> None:
         try:
             from google import genai  # imported lazily so the app runs without it
         except ImportError as exc:  # pragma: no cover
@@ -78,8 +88,25 @@ class GeminiClient:
                 "google-genai not installed. Run: pip install google-genai"
             ) from exc
         self._genai = genai
-        self._client = genai.Client(api_key=api_key)
+        self._keys = list(api_keys)
+        if not self._keys:
+            raise LLMError("No Gemini API keys configured.")
         self.model_name = model
+        self._clients: Dict[int, Any] = {}
+        self._spent: set = set()  # indices whose daily quota is exhausted
+        self._idx = 0
+
+    def _client_for(self, idx: int):
+        if idx not in self._clients:
+            self._clients[idx] = self._genai.Client(api_key=self._keys[idx])
+        return self._clients[idx]
+
+    def _next_available(self) -> Optional[int]:
+        for _ in range(len(self._keys)):
+            if self._idx not in self._spent:
+                return self._idx
+            self._idx = (self._idx + 1) % len(self._keys)
+        return None
 
     def generate_json(self, prompt: str, system: Optional[str] = None) -> Dict[str, Any]:
         global _quota_exhausted
@@ -93,32 +120,49 @@ class GeminiClient:
             response_mime_type="application/json",
             temperature=0.3,
         )
-
         retries = max(0, settings.llm_max_retries)
+
+        # Try each still-available key; rotate on daily-quota exhaustion.
+        while True:
+            idx = self._next_available()
+            if idx is None:
+                _quota_exhausted = True
+                raise LLMQuotaError(
+                    f"All {len(self._keys)} Gemini key(s) hit their daily quota. "
+                    "Add more keys (GEMINI_API_KEYS), use a higher-limit model, "
+                    "or run LLM steps less often."
+                )
+            client = self._client_for(idx)
+            key_label = f"key#{idx + 1}/{len(self._keys)}"
+            try:
+                return self._call_with_retries(client, contents, config, retries, key_label)
+            except LLMQuotaError:
+                # This key is spent for today -> mark and try the next one.
+                self._spent.add(idx)
+                self._idx = (self._idx + 1) % len(self._keys)
+                logger.warning(
+                    "%s daily quota exhausted; rotating to next key.", key_label
+                )
+                continue
+
+    def _call_with_retries(self, client, contents, config, retries, key_label) -> Dict[str, Any]:
         for attempt in range(retries + 1):
             _throttle()
             try:
-                resp = self._client.models.generate_content(
+                resp = client.models.generate_content(
                     model=self.model_name, contents=contents, config=config
                 )
                 return _safe_json_loads((resp.text or "").strip())
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
                 is_429 = "429" in msg or "RESOURCE_EXHAUSTED" in msg
-                # Daily free-tier cap -> retrying is futile until midnight.
-                if is_429 and ("PerDay" in msg or "per_day" in msg.lower()):
-                    _quota_exhausted = True
-                    raise LLMQuotaError(
-                        "Daily free-tier quota exhausted. Reduce LLM usage "
-                        "(run deep-dive/discover less often), use a higher-limit "
-                        "model, or upgrade the plan."
-                    ) from exc
-                # Transient per-minute 429 -> back off and retry.
+                if is_429 and _is_daily_quota(msg):
+                    raise LLMQuotaError(f"{key_label} daily quota exhausted") from exc
                 if is_429 and attempt < retries:
                     delay = _parse_retry_delay(msg) or (2 ** (attempt + 1))
                     logger.warning(
-                        "LLM rate-limited (429); retrying in %.0fs [%d/%d]",
-                        min(delay, 60), attempt + 1, retries,
+                        "LLM rate-limited (429) on %s; retrying in %.0fs [%d/%d]",
+                        key_label, min(delay, 60), attempt + 1, retries,
                     )
                     time.sleep(min(delay, 60))
                     continue
@@ -151,5 +195,7 @@ def get_llm_client() -> Optional[LLMClient]:
         return None
     provider = settings.llm_provider.lower()
     if provider == "gemini":
-        return GeminiClient(settings.gemini_api_key, settings.gemini_model)
+        keys = settings.gemini_key_list
+        logger.info("LLM: Gemini with %d key(s) in pool.", len(keys))
+        return GeminiClient(keys, settings.gemini_model)
     raise LLMError(f"Unknown LLM_PROVIDER: {provider}")

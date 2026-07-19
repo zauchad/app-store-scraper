@@ -3,7 +3,9 @@ name: Daily Market Scan
 # Free daily data collection. Runs Level 1 (scrape + score) every day and
 # Level 2 (LLM deep dive on top niches). Requires repo secrets:
 #   DATABASE_URL     -> your Supabase Postgres connection string
-#   GEMINI_API_KEY   -> Google AI Studio key (free tier)
+#   GEMINI_API_KEY   -> Google AI Studio key (free tier); OR use a pool:
+#   GEMINI_API_KEY_1 / _2 / _3 -> optional extra keys (separate GCP projects)
+#     to multiply the daily free-tier quota (auto-rotates when one is spent).
 on:
   schedule:
     # 05:10 UTC daily (charts refresh overnight). Adjust as you like.
@@ -16,7 +18,11 @@ jobs:
     timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Single key (backward compatible) ...
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # ... or a pool: empty secrets render as blanks and are filtered out, so if
+      # you only set GEMINI_API_KEY this collapses to commas and falls back to it.
+      GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEY_1 }},${{ secrets.GEMINI_API_KEY_2 }},${{ secrets.GEMINI_API_KEY_3 }}
       STORE_COUNTRY: ${{ vars.STORE_COUNTRY || 'us' }}
       TOP_N_APPS: ${{ vars.TOP_N_APPS || '50' }}
       MARKETING_BUDGET_PLN: ${{ vars.MARKETING_BUDGET_PLN || '7500' }}
