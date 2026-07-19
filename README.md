@@ -72,6 +72,23 @@ python run.py discover --top-k 5 --per-category 12
 W dashboardzie: zakładka **Micro-Niche Explorer** (generuj AI / wpisz ręcznie ->
 ranking + szczegóły konkurentów + search-interest).
 
+### Sygnały „jak w płatnych narzędziach" (za darmo)
+
+Trzy dodatki zbliżające analizę do AppTweak / data.ai / Sensor Tower — wszystkie
+z danych, które już przepływają przez system (zero płatnych zapytań):
+
+- **Update cadence / porzucone forty** — z `currentVersionReleaseDate` (Lookup)
+  liczymy, ile silnych apek nie było aktualizowanych >12 mies. Zaniedbany, duży
+  incumbent = świeża okazja mimo starych recenzji. Widoczne w *Niche Deep Dive*.
+- **Rank velocity / Breakout** — porównujemy pozycję w rankingu między skanami i
+  pokazujemy apki najszybciej pnące się w górę (odpowiednik listy *Rising* z
+  data.ai). Wpięte też w *momentum* score. Sekcja **Breakout** w *Opportunity
+  Radar* (wymaga ≥2 dni historii).
+- **Keyword difficulty (ASO)** — dla mikro-niszy liczymy trudność wyprzedzenia
+  apek już rankujących (autorytet = wolumen ocen + twierdze). W parze z
+  search-interest daje kwadrant AppTweak: **wysoki popyt + niska trudność = sweet
+  spot**. Kolumny *Popyt wysz.* i *Trudność* w *Micro-Niche Explorer*.
+
 ## Architektura
 
 ```mermaid

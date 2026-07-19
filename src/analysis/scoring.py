@@ -26,6 +26,11 @@ MEGA_MIN_REVIEWS = 3_000_000
 QUALITY_BAR = 4.6      # incumbents at/above this = essentially no gap
 QUALITY_GAP_SPAN = 1.0  # gap saturates ~1.0 star below the bar
 
+# --- Update cadence -------------------------------------------------------- #
+# A sizeable app not updated in this many days looks "abandoned" - a fresh
+# opening even if it still has lots of legacy reviews.
+STALE_DAYS = 365
+
 # --- Base component weights (momentum dropped + renormalised when no history) #
 WEIGHTS = {
     "demand": 0.25,
@@ -44,6 +49,28 @@ def absolute_quality_gap(avg_rating: Optional[float]) -> float:
         return 0.4
     gap = (QUALITY_BAR - avg_rating) / QUALITY_GAP_SPAN
     return max(0.0, min(1.0, gap))
+
+
+# --- Keyword (ASO) difficulty ---------------------------------------------- #
+# Median top-app ratings at which ranking difficulty ~saturates.
+DIFFICULTY_REF = 500_000
+
+
+def keyword_difficulty(
+    median_top_ratings: int, num_fortress: int, num_mega: int, top_n: int
+) -> float:
+    """0..1 ASO difficulty: how hard to out-rank the apps already on this term.
+
+    Driven by the *authority* of apps currently ranking (rating volume), the
+    share of entrenched fortresses, and a bump for any mega giants. This is the
+    AppTweak-style "difficulty" that pairs with search-interest ("volume"):
+    the sweet spot is HIGH interest + LOW difficulty.
+    """
+    strength = min(math.log1p(max(median_top_ratings, 0)) / math.log1p(DIFFICULTY_REF), 1.0)
+    fortress_share = min(num_fortress / max(top_n, 1), 1.0)
+    mega_bump = min(num_mega * 0.15, 0.3)
+    diff = 0.55 * strength + 0.45 * fortress_share + mega_bump
+    return round(min(max(diff, 0.0), 1.0), 4)
 
 
 def contestability(num_mega: int, num_fortress: int) -> float:

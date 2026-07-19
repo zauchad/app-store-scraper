@@ -126,14 +126,24 @@ def _scrape_category(
                     rating_avg=meta.rating_avg if meta else None,
                     rating_count=meta.rating_count if meta else None,
                     version=meta.version if meta else None,
+                    current_version_release_date=(
+                        meta.current_version_release_date if meta else None
+                    ),
                 )
             )
             counters["snapshots"] += 1
-            # keep description for LLM context if available
-            if meta and meta.description:
+            # persist app-level metadata (description + free date signals)
+            if meta:
                 app = session.get(App, app_id)
                 if app is not None:
-                    app.description = meta.description[:4000]
+                    if meta.description:
+                        app.description = meta.description[:4000]
+                    if meta.release_date:
+                        app.release_date = meta.release_date
+                    if meta.current_version_release_date:
+                        app.current_version_release_date = (
+                            meta.current_version_release_date
+                        )
 
     if fetch_reviews:
         _scrape_reviews_for_category(app_ids, counters)

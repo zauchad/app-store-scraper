@@ -67,6 +67,9 @@ class AppMetadata:
     description: Optional[str] = None
     url: Optional[str] = None
     icon_url: Optional[str] = None
+    # Already present in the Lookup/Search payload - free extra signals:
+    release_date: Optional[datetime] = None            # app age
+    current_version_release_date: Optional[datetime] = None  # update cadence
 
 
 @dataclass
@@ -202,6 +205,10 @@ class ItunesClient:
             description=r.get("description"),
             url=r.get("trackViewUrl"),
             icon_url=r.get("artworkUrl100"),
+            release_date=_parse_apple_date(r.get("releaseDate")),
+            current_version_release_date=_parse_apple_date(
+                r.get("currentVersionReleaseDate")
+            ),
         )
 
     # ---- search (micro-niche discovery) ---------------------------------
@@ -322,3 +329,14 @@ class ItunesClient:
 def _chunks(items: List[int], size: int):
     for i in range(0, len(items), size):
         yield items[i : i + size]
+
+
+def _parse_apple_date(value: Optional[str]) -> Optional[datetime]:
+    """Parse Apple ISO timestamps like '2020-05-01T07:00:00Z' -> naive UTC."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None

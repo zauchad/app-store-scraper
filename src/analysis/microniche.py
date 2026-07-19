@@ -23,6 +23,7 @@ from src.analysis.scoring import (
     contestability,
     count_incumbents,
     effective_weights,
+    keyword_difficulty,
 )
 from src.config import settings
 from src.db.models import Keyword, KeywordScore
@@ -57,6 +58,7 @@ class KeywordResult:
     low_saturation_score: float
     contestability: float
     search_interest: Optional[float]
+    difficulty: float
     opportunity_score: float
     marketing: MarketingEstimate
     top_apps: List[dict]
@@ -98,6 +100,7 @@ def score_keyword(
         demand = (1.0 - w) * engagement + w * search_interest
     quality_gap = absolute_quality_gap(avg_rating)
     low_saturation = max(0.0, 1.0 - num_fortress / SATURATION_REF)
+    difficulty = keyword_difficulty(median_count, num_fortress, num_mega, len(top))
 
     weights = effective_weights(has_momentum=False)
     attractiveness = (
@@ -141,6 +144,7 @@ def score_keyword(
         low_saturation_score=round(low_saturation, 4),
         contestability=round(contest, 4),
         search_interest=round(search_interest, 4) if search_interest is not None else None,
+        difficulty=round(difficulty, 4),
         opportunity_score=opp,
         marketing=mkt,
         top_apps=top_apps,
@@ -192,6 +196,7 @@ def _persist(results: List[KeywordResult], source: str) -> None:
                     low_saturation_score=r.low_saturation_score,
                     contestability=r.contestability,
                     search_interest=r.search_interest,
+                    difficulty=r.difficulty,
                     opportunity_score=r.opportunity_score,
                     est_cpi_pln=r.marketing.est_cpi_pln,
                     est_installs_month=r.marketing.est_installs_month,

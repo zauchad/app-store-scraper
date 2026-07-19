@@ -39,6 +39,7 @@ from src.reporting import (  # noqa: E402
     latest_insight,
     latest_keyword_scores_df,
     latest_scores_df,
+    rising_apps_df,
     top_apps_for_category,
 )
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
@@ -164,7 +165,8 @@ with st.sidebar.expander("Jak liczymy Opportunity Score?"):
         "- **Popyt** — mediana liczby ocen (odporna na 1-2 gigantów)\n"
         "- **Luka jakości** — jak nisko konkurencja jest pod progiem 4.6★\n"
         "- **Niskie nasycenie** — mało silnych graczy\n"
-        "- **Momentum** — wzrost recenzji dzień do dnia (aktywne po kilku skanach)\n\n"
+        "- **Momentum** — wzrost recenzji + awans w rankingu (po kilku skanach)\n"
+        "- **Porzucone forty** — silne apki bez aktualizacji >12 mies. = okazja\n\n"
         "**Contestability** to mnożnik 0-1: czy lean founder w ogóle może "
         "wejść. Każdy gigant (>3 mln ocen) drastycznie go obniża — dlatego "
         "rynki typu Social Networking lądują nisko, mimo dużego popytu."
@@ -237,10 +239,14 @@ if view == "Micro-Niche Explorer":
     kdisp["Werdykt"] = kdisp.apply(lambda r: verdict(r)[0], axis=1)
     kdisp["Szansa"] = kdisp["success_probability"].apply(pct)
     kdisp["Contest."] = kdisp["contestability"].apply(lambda x: f"{x:.2f}")
+    kdisp["Popyt wysz."] = kdisp.get("search_interest", pd.Series(dtype=float)).apply(
+        lambda x: f"{x:.2f}" if pd.notna(x) else "-")
+    kdisp["Trudność"] = kdisp.get("difficulty", pd.Series(dtype=float)).apply(
+        lambda x: f"{x:.2f}" if pd.notna(x) else "-")
     kdisp["CPI"] = kdisp["est_cpi_pln"].apply(pln)
     st.dataframe(
-        kdisp[["term", "opportunity_score", "Szansa", "avg_rating_top",
-               "strong_incumbents", "mega_incumbents", "Contest.",
+        kdisp[["term", "opportunity_score", "Szansa", "Popyt wysz.", "Trudność",
+               "avg_rating_top", "strong_incumbents", "mega_incumbents", "Contest.",
                "est_installs_month", "CPI", "Werdykt"]]
         .rename(columns={"term": "Mikro-nisza", "opportunity_score": "Opportunity",
                          "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
@@ -249,19 +255,23 @@ if view == "Micro-Niche Explorer":
         column_config={"Opportunity": st.column_config.ProgressColumn(
             "Opportunity", min_value=0, max_value=100, format="%.0f")},
     )
+    st.caption("💡 Sweet spot ASO: **wysoki Popyt wysz. + niska Trudność** "
+               "(dużo szukają, słabi konkurenci do wyprzedzenia).")
 
     st.markdown("#### Szczegóły mikro-niszy")
     pick = st.selectbox("Wybierz", kdf["term"].tolist())
     krow = kdf[kdf["term"] == pick].iloc[0]
     lvl, css, expl = verdict(krow)
     st.markdown(badge(lvl, css, expl), unsafe_allow_html=True)
-    d1, d2, d3, d4, d5 = st.columns(5)
+    d1, d2, d3, d4, d5, d6 = st.columns(6)
     d1.metric("Opportunity", f"{krow['opportunity_score']:.0f}/100")
     d2.metric("Popyt (mediana ocen)", num(krow["median_rating_count"]))
     si = krow.get("search_interest")
     d3.metric("Search interest", f"{si:.2f}" if si is not None and pd.notna(si) else "-")
-    d4.metric("Luka jakości", f"{krow['quality_gap']:.2f}")
-    d5.metric("Contestability", f"{krow['contestability']:.2f}")
+    diff = krow.get("difficulty")
+    d4.metric("Trudność ASO", f"{diff:.2f}" if diff is not None and pd.notna(diff) else "-")
+    d5.metric("Luka jakości", f"{krow['quality_gap']:.2f}")
+    d6.metric("Contestability", f"{krow['contestability']:.2f}")
     apps = krow.get("top_apps") or []
     if apps:
         st.caption("Aplikacje konkurujące o to zapytanie:")
@@ -364,6 +374,22 @@ if view == "Opportunity Radar":
         },
     )
 
+    st.divider()
+    st.markdown("#### 🚀 Breakout — apki najszybciej pnące się w rankingu")
+    st.caption("Największy skok pozycji względem poprzedniego skanu = rosnące "
+               "zainteresowanie (odpowiednik listy Rising/Breakout z data.ai). "
+               "Wymaga ≥2 dni historii.")
+    rising = rising_apps_df(limit=15)
+    if rising.empty:
+        st.info("Brak danych o breakoutach — potrzebne min. 2 uruchomienia skanu "
+                "(momentum liczony między snapshotami).")
+    else:
+        rdisp = rising.rename(columns={
+            "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
+            "rank_now": "Pozycja teraz", "rank_prev": "Poprzednio",
+            "rank_delta": "Skok (↑)", "rating_count": "Liczba ocen"})
+        st.dataframe(rdisp, use_container_width=True, hide_index=True)
+
 
 # --------------------------------------------------------------------------- #
 #  View 2: Niche Deep Dive
@@ -399,6 +425,19 @@ else:
     m4.metric("Twierdze", num(row["strong_incumbents"]))
     m5.metric("Giganci (>3M)", num(row.get("mega_incumbents", 0)))
     m6.metric("Contestability", f"{row.get('contestability', 1):.2f}")
+
+    stale = int(row.get("stale_incumbents", 0) or 0)
+    days_upd = row.get("median_days_since_update")
+    if stale > 0:
+        st.warning(
+            f"🕳️ **Porzucone forty:** {stale} silnych aplikacji nie było "
+            f"aktualizowanych >12 miesięcy — potencjalnie zaniedbane, dojrzałe "
+            f"do podbicia lepszym, aktywnie rozwijanym produktem."
+        )
+    if days_upd is not None and pd.notna(days_upd):
+        st.caption(f"Mediana czasu od ostatniej aktualizacji w niszy: "
+                   f"**{int(days_upd)} dni**. Rank momentum: "
+                   f"**{row.get('rank_momentum', 0):+.2f}** (dodatni = apki pną się w górę).")
 
     st.divider()
 

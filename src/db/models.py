@@ -65,6 +65,11 @@ class App(Base):
     icon_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    # Free signals from Lookup: app age + update cadence ("abandoned fort").
+    release_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    current_version_release_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
 
     category: Mapped[Optional[Category]] = relationship(back_populates="apps")
     snapshots: Mapped[list["AppSnapshot"]] = relationship(back_populates="app")
@@ -88,6 +93,10 @@ class AppSnapshot(Base):
     rating_avg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rating_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Update cadence at scan time -> lets us compute "days since last update".
+    current_version_release_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     captured_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), index=True
     )
@@ -138,12 +147,20 @@ class CategoryScore(Base):
     median_rating_count: Mapped[int] = mapped_column(Integer, default=0)
     num_strong_incumbents: Mapped[int] = mapped_column(Integer, default=0)
     num_mega_incumbents: Mapped[int] = mapped_column(Integer, default=0)
+    # Update cadence: how many top incumbents look "abandoned" (>12m no update)
+    # and the median days-since-update across the niche. Stale forts = openings.
+    num_stale_incumbents: Mapped[int] = mapped_column(Integer, default=0)
+    median_days_since_update: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
 
     # Normalised 0..1 component scores
     demand_score: Mapped[float] = mapped_column(Float, default=0.0)
     quality_gap_score: Mapped[float] = mapped_column(Float, default=0.0)
     low_saturation_score: Mapped[float] = mapped_column(Float, default=0.0)
     momentum_score: Mapped[float] = mapped_column(Float, default=0.0)
+    # Avg rank improvement across the niche (breakout pressure); needs history.
+    rank_momentum: Mapped[float] = mapped_column(Float, default=0.0)
     # 0..1 multiplier: can a lean founder realistically compete here?
     contestability: Mapped[float] = mapped_column(Float, default=1.0)
 
@@ -205,6 +222,8 @@ class KeywordScore(Base):
     contestability: Mapped[float] = mapped_column(Float, default=1.0)
     # 0..1 search-interest proxy (autocomplete popularity); None if unknown.
     search_interest: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 0..1 ASO difficulty of out-ranking apps already on this term.
+    difficulty: Mapped[float] = mapped_column(Float, default=0.0)
     opportunity_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
 
     est_cpi_pln: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

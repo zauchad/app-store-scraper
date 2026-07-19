@@ -33,6 +33,7 @@ from src.analysis.scoring import (
     FORTRESS_MIN_RATING,
     FORTRESS_MIN_REVIEWS,
     MEGA_MIN_REVIEWS,
+    STALE_DAYS,
 )
 from src.db.models import AppSnapshot, Category
 from src.logging_config import get_logger
@@ -50,7 +51,10 @@ class CategoryAggregate:
     median_rating_count: int
     num_strong_incumbents: int
     num_mega_incumbents: int
+    num_stale_incumbents: int  # sizeable apps not updated in 12m+ ("abandoned")
+    median_days_since_update: Optional[int]
     raw_momentum: float  # signed avg review-count growth vs previous snapshot
+    raw_rank_momentum: float  # avg rank improvement vs previous snapshot (up=+)
 
 
 def _latest_snapshot_per_app(
@@ -126,10 +130,14 @@ def compute_category_aggregate(
     )
     megas = sum(1 for s in latest if (s.rating_count or 0) >= MEGA_MIN_REVIEWS)
 
-    # Momentum: compare current review counts to the previous run.
+    # Update cadence: how stale are the sizeable incumbents? (abandoned = opening)
     run_ts = max(s.captured_at for s in latest)
+    stale_incumbents, median_days_update = _staleness(latest, run_ts)
+
+    # Momentum: compare current review counts + rank to the previous run.
     prev = _previous_snapshot_map(session, genre_id, run_ts - timedelta(hours=1))
     momentum = _review_velocity(latest, prev)
+    rank_momentum = _rank_velocity(latest, prev)
 
     return CategoryAggregate(
         genre_id=genre_id,
@@ -140,8 +148,42 @@ def compute_category_aggregate(
         median_rating_count=median_counts,
         num_strong_incumbents=fortresses,
         num_mega_incumbents=megas,
+        num_stale_incumbents=stale_incumbents,
+        median_days_since_update=median_days_update,
         raw_momentum=momentum,
+        raw_rank_momentum=rank_momentum,
     )
+
+
+def _staleness(latest: List[AppSnapshot], run_ts: datetime) -> tuple:
+    """(num sizeable apps not updated in STALE_DAYS, median days-since-update)."""
+    days_list: List[int] = []
+    stale = 0
+    for s in latest:
+        upd = s.current_version_release_date
+        if upd is None:
+            continue
+        days = (run_ts - upd).days
+        days_list.append(days)
+        if days > STALE_DAYS and (s.rating_count or 0) >= FORTRESS_MIN_REVIEWS:
+            stale += 1
+    median_days = int(statistics.median(days_list)) if days_list else None
+    return stale, median_days
+
+
+def _rank_velocity(
+    latest: List[AppSnapshot], prev: Dict[int, AppSnapshot]
+) -> float:
+    """Avg rank improvement vs previous run (positive = apps climbing). 0 w/o history."""
+    deltas: List[int] = []
+    for s in latest:
+        p = prev.get(s.app_id)
+        if p is None or p.rank is None or s.rank is None:
+            continue
+        deltas.append(p.rank - s.rank)  # rank 5 -> 2 = +3 (improved)
+    if not deltas:
+        return 0.0
+    return round(sum(deltas) / len(deltas), 4)
 
 
 def _review_velocity(

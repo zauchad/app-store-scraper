@@ -44,6 +44,7 @@ def latest_scores_df() -> pd.DataFrame:
                 "quality_gap": score.quality_gap_score,
                 "low_saturation": score.low_saturation_score,
                 "momentum": score.momentum_score,
+                "rank_momentum": score.rank_momentum,
                 "contestability": score.contestability,
                 "num_apps": score.num_apps,
                 "avg_rating_top": score.avg_rating_top,
@@ -51,6 +52,8 @@ def latest_scores_df() -> pd.DataFrame:
                 "median_rating_count": score.median_rating_count,
                 "strong_incumbents": score.num_strong_incumbents,
                 "mega_incumbents": score.num_mega_incumbents,
+                "stale_incumbents": score.num_stale_incumbents,
+                "median_days_since_update": score.median_days_since_update,
                 "est_cpi_pln": score.est_cpi_pln,
                 "est_installs_month": score.est_installs_month,
                 "marketing_cost_pln": score.marketing_cost_pln,
@@ -97,6 +100,66 @@ def has_any_data() -> bool:
         return session.query(CategoryScore).first() is not None
 
 
+def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
+    """Breakout detection: apps whose chart rank improved most vs the prior run.
+
+    Compares each app's two most recent snapshots (needs >=2 runs of history).
+    Positive `rank_delta` = climbing (e.g. #40 -> #12 = +28). This is the
+    free equivalent of data.ai's 'Rising / Breakout' list.
+    """
+    from src.db.models import AppSnapshot
+
+    with session_scope() as session:
+        snaps = session.execute(
+            select(
+                AppSnapshot.app_id,
+                AppSnapshot.genre_id,
+                AppSnapshot.rank,
+                AppSnapshot.rating_count,
+                AppSnapshot.captured_at,
+                App.name,
+                App.developer,
+                Category.name.label("category"),
+            )
+            .join(App, App.id == AppSnapshot.app_id)
+            .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
+        ).all()
+
+    # Keep the two latest snapshots per app.
+    per_app: Dict[int, list] = {}
+    for row in snaps:
+        per_app.setdefault(row.app_id, [])
+        if len(per_app[row.app_id]) < 2:
+            per_app[row.app_id].append(row)
+
+    records: List[Dict] = []
+    for rows in per_app.values():
+        if len(rows) < 2:
+            continue
+        cur, prev = rows[0], rows[1]
+        if cur.rank is None or prev.rank is None:
+            continue
+        delta = prev.rank - cur.rank
+        if delta < min_improvement:
+            continue
+        records.append(
+            {
+                "name": cur.name,
+                "developer": cur.developer,
+                "category": cur.category,
+                "rank_now": cur.rank,
+                "rank_prev": prev.rank,
+                "rank_delta": delta,
+                "rating_count": cur.rating_count,
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("rank_delta", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
 def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
     """Most recent score per keyword term (micro-niches), ranked."""
     with session_scope() as session:
@@ -122,6 +185,7 @@ def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
                 "low_saturation": s.low_saturation_score,
                 "contestability": s.contestability,
                 "search_interest": s.search_interest,
+                "difficulty": s.difficulty,
                 "avg_rating_top": s.avg_rating_top,
                 "median_rating_count": s.median_rating_count,
                 "strong_incumbents": s.num_strong_incumbents,

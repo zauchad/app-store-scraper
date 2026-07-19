@@ -51,6 +51,7 @@ class ScoredCategory:
     quality_gap_score: float
     low_saturation_score: float
     momentum_score: float
+    rank_momentum: float
     contestability: float
     opportunity_score: float
     marketing: MarketingEstimate
@@ -74,13 +75,18 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
     demand_raw = [math.log1p(max(a.median_rating_count, 0)) for a in aggregates]
     # SATURATION: number of fortresses, normalised.
     sat_raw = [float(a.num_strong_incumbents) for a in aggregates]
+    # MOMENTUM: heating-up signal from BOTH review velocity and rank climbing.
     mom_raw = [a.raw_momentum for a in aggregates]
+    rank_raw = [a.raw_rank_momentum for a in aggregates]
 
     demand_n = _minmax(demand_raw)
     sat_n = _minmax(sat_raw)
     mom_n = _minmax(mom_raw)
+    rank_n = _minmax(rank_raw)
 
-    has_momentum = any(abs(m) > 1e-9 for m in mom_raw)
+    has_review_mom = any(abs(m) > 1e-9 for m in mom_raw)
+    has_rank_mom = any(abs(m) > 1e-9 for m in rank_raw)
+    has_momentum = has_review_mom or has_rank_mom
     weights = effective_weights(has_momentum)
 
     cpi_by_genre = _cpi_lookup()
@@ -90,7 +96,15 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
         demand = demand_n[i]
         quality_gap = absolute_quality_gap(agg.avg_rating_top)
         low_saturation = 1.0 - sat_n[i]
-        momentum = mom_n[i] if has_momentum else 0.0
+        # Blend the two momentum sources where each has history.
+        if has_review_mom and has_rank_mom:
+            momentum = 0.5 * mom_n[i] + 0.5 * rank_n[i]
+        elif has_review_mom:
+            momentum = mom_n[i]
+        elif has_rank_mom:
+            momentum = rank_n[i]
+        else:
+            momentum = 0.0
 
         attractiveness = (
             weights["demand"] * demand
@@ -119,6 +133,7 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
                 quality_gap_score=round(quality_gap, 4),
                 low_saturation_score=round(low_saturation, 4),
                 momentum_score=round(momentum, 4),
+                rank_momentum=round(agg.raw_rank_momentum, 4),
                 contestability=round(contest, 4),
                 opportunity_score=opp,
                 marketing=mkt,
@@ -153,10 +168,13 @@ def compute_and_store() -> List[ScoredCategory]:
                     median_rating_count=s.aggregate.median_rating_count,
                     num_strong_incumbents=s.aggregate.num_strong_incumbents,
                     num_mega_incumbents=s.aggregate.num_mega_incumbents,
+                    num_stale_incumbents=s.aggregate.num_stale_incumbents,
+                    median_days_since_update=s.aggregate.median_days_since_update,
                     demand_score=s.demand_score,
                     quality_gap_score=s.quality_gap_score,
                     low_saturation_score=s.low_saturation_score,
                     momentum_score=s.momentum_score,
+                    rank_momentum=s.rank_momentum,
                     contestability=s.contestability,
                     opportunity_score=s.opportunity_score,
                     est_cpi_pln=s.marketing.est_cpi_pln,
