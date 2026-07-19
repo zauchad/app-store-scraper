@@ -108,10 +108,17 @@ codziennie od teraz:
   zaangażowania (liczby ocen) w oknie N tygodni. Kolumna *Wzrost 4-tyg.* w
   *Opportunity Radar* (pokazuje `n/d` do czasu uzbierania historii). Kod:
   `src/analysis/trends.py`.
-- **Retencja / downsampling** — `python run.py retention` trzyma pełne dzienne
-  snapshoty przez 60 dni (`RETENTION_DAILY_DAYS`), a starsze redukuje do jednego
-  na apkę na tydzień. Zamienia nieograniczony wzrost bazy w płaski strumień →
-  lata historii mieszczą się w darmowym Postgresie. Wpięte w `all` i cron.
+- **Retencja / downsampling** — `python run.py retention` (**domyślnie WYŁĄCZONA**,
+  `RETENTION_ENABLED=false` → trzymamy wszystkie surowe snapshoty bezterminowo;
+  uruchom ręcznie flagą `--force` albo włącz `RETENTION_ENABLED=true`). Gdy
+  włączona: pełne dzienne snapshoty przez 60 dni (`RETENTION_DAILY_DAYS`), starsze
+  redukowane do jednego na apkę na tydzień → baza pozostaje płaska.
+  **Ważne — co retencja KASUJE, a co ZOSTAJE NA ZAWSZE:** rusza wyłącznie
+  `app_snapshots` (surowa seria czasowa) i nawet tam nie usuwa całości —
+  punkty tygodniowe zostają bezterminowo (trendy się nie urywają). **Nigdy** nie
+  tyka "wniosków": `category_insights` (podsumowania LLM), `category_scores`
+  (dzienna historia Opportunity), `keywords`/`keyword_scores` (mikro-nisze),
+  `reviews` ani `apps` — te trzymamy w całości, na zawsze.
 - **Cotygodniowy digest** — `python run.py digest` (i zakładka **Co się zmieniło**
   w dashboardzie) składa jeden brief: rosnące nisze, najlepsze osiągalne okazje,
   nowe mikro-nisze, breakouty, spadki jakości i porzucone forty. Zapisywany też

@@ -39,8 +39,10 @@ def main(argv=None) -> int:
     p_disc.add_argument("--top-k", type=int, default=None)
     p_disc.add_argument("--per-category", type=int, default=None)
 
-    p_ret = sub.add_parser("retention", help="Downsample old snapshots (keep DB flat)")
+    p_ret = sub.add_parser("retention", help="Downsample old snapshots (DISABLED by default)")
     p_ret.add_argument("--daily-days", type=int, default=None)
+    p_ret.add_argument("--force", action="store_true",
+                       help="Run even if RETENTION_ENABLED is false")
 
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
     p_dig.add_argument("--weeks", type=int, default=4)
@@ -94,7 +96,7 @@ def main(argv=None) -> int:
     if args.command == "retention":
         from src.pipeline.retention import run_retention
 
-        run_retention(daily_days=args.daily_days)
+        run_retention(daily_days=args.daily_days, force=args.force)
         return 0
 
     if args.command == "digest":

@@ -73,8 +73,11 @@ class Settings(BaseSettings):
     discover_keywords_per_category: int = 12
 
     # --- Retention ---
-    # Keep every daily snapshot for this many days; older ones are downsampled to
-    # one per app per ISO-week to keep the DB roughly flat over time.
+    # OFF by default: keep ALL raw daily snapshots indefinitely. Flip to True
+    # only if you want to downsample old snapshots to keep the DB flat.
+    retention_enabled: bool = False
+    # When enabled: keep every daily snapshot for this many days; older ones are
+    # downsampled to one per app per ISO-week.
     retention_daily_days: int = 60
 
     # ---- Derived helpers -------------------------------------------------

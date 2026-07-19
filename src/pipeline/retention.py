@@ -9,6 +9,14 @@ Policy (Alembic-free, DB-agnostic):
 
 At ~1k snapshots/day this turns unbounded growth into a slow, bounded trickle,
 so months (years) of history stay well within a free Postgres tier.
+
+SCOPE - what retention touches vs KEEPS FOREVER:
+  * ONLY prunes `app_snapshots` (the raw, high-volume time-series), and even
+    there it never deletes all history - weekly points survive indefinitely so
+    long-range trend lines stay intact.
+  * NEVER touches the "conclusions": `category_insights` (LLM summaries),
+    `category_scores` (daily Opportunity history), `keywords` / `keyword_scores`
+    (micro-niches), `reviews`, or `apps`. These are kept in full, forever.
 """
 from __future__ import annotations
 
@@ -25,10 +33,20 @@ from src.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def run_retention(daily_days: int | None = None) -> Dict[str, int]:
-    days = daily_days if daily_days is not None else settings.retention_daily_days
+def run_retention(
+    daily_days: int | None = None, force: bool = False
+) -> Dict[str, int]:
     counters = {"scanned": 0, "kept_weekly": 0, "deleted": 0}
 
+    # Disabled by default: keep every raw snapshot forever unless explicitly
+    # enabled via RETENTION_ENABLED=true (or `--force` on the CLI).
+    if not settings.retention_enabled and not force:
+        logger.info(
+            "Retention DISABLED (RETENTION_ENABLED=false) - keeping all snapshots."
+        )
+        return counters
+
+    days = daily_days if daily_days is not None else settings.retention_daily_days
     with session_scope() as session:
         max_ts = session.execute(select(func.max(AppSnapshot.captured_at))).scalar()
         if max_ts is None:
