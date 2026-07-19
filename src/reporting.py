@@ -100,6 +100,25 @@ def has_any_data() -> bool:
         return session.query(CategoryScore).first() is not None
 
 
+def category_growth_df(weeks: int = 4) -> pd.DataFrame:
+    """Median per-app engagement growth over the last N weeks, per category."""
+    from src.analysis.trends import all_category_growth
+
+    rows = all_category_growth(weeks=weeks)
+    df = pd.DataFrame(
+        [
+            {
+                "genre_id": r.genre_id,
+                "category": r.name,
+                "growth_pct": r.growth_pct,
+                "apps_with_history": r.apps_with_history,
+            }
+            for r in rows
+        ]
+    )
+    return df
+
+
 def category_rating_history(genre_id: int, limit: int = 60) -> pd.DataFrame:
     """Time series of the category's avg incumbent rating (quality over time).
 

@@ -99,6 +99,24 @@ z danych, które już przepływają przez system (zero płatnych zapytań):
   *Spadki jakości* w *Opportunity Radar* wskazuje apki z osuwającą się oceną
   (użytkownicy niezadowoleni = okno na lepszy produkt). Wymaga ≥2 skanów.
 
+### Warstwa trendów (zwrot z miesięcy zbierania danych)
+
+Trzy rzeczy, które nabierają wartości dopiero z historią — dlatego warto zbierać
+codziennie od teraz:
+
+- **Wzrost N-tygodniowy** — zamiast szumu dzień-do-dnia liczymy medianę wzrostu
+  zaangażowania (liczby ocen) w oknie N tygodni. Kolumna *Wzrost 4-tyg.* w
+  *Opportunity Radar* (pokazuje `n/d` do czasu uzbierania historii). Kod:
+  `src/analysis/trends.py`.
+- **Retencja / downsampling** — `python run.py retention` trzyma pełne dzienne
+  snapshoty przez 60 dni (`RETENTION_DAILY_DAYS`), a starsze redukuje do jednego
+  na apkę na tydzień. Zamienia nieograniczony wzrost bazy w płaski strumień →
+  lata historii mieszczą się w darmowym Postgresie. Wpięte w `all` i cron.
+- **Cotygodniowy digest** — `python run.py digest` (i zakładka **Co się zmieniło**
+  w dashboardzie) składa jeden brief: rosnące nisze, najlepsze osiągalne okazje,
+  nowe mikro-nisze, breakouty, spadki jakości i porzucone forty. Zapisywany też
+  do `data/digest_YYYYMMDD.md`.
+
 ### Limity darmowego LLM (Gemini)
 
 `gemini-2.5-flash` w darmowym tierze ma **~20 zapytań/dzień**. Pełny `all` zużywa
@@ -158,7 +176,9 @@ python run.py deep-dive             # LLM dla TOP-K nisz
 python run.py deep-dive --genre 6013
 python run.py discover              # Poziom 3: auto-drążenie top kategorii w mikro-nisze
 python run.py keywords --terms "..."  # ręczna walidacja mikro-nisz
-python run.py all                   # scan + deep-dive + discover (pełny job dzienny)
+python run.py retention            # downsampling starych snapshotów (płaska baza)
+python run.py digest               # cotygodniowy brief "co się zmieniło"
+python run.py all                   # scan + deep-dive + discover + retention (pełny job)
 ```
 
 ## Wdrożenie produkcyjne (darmowe) — krok po kroku

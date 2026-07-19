@@ -40,3 +40,9 @@ jobs:
 
       - name: Level 3 - auto-discover micro-niches (drill top categories)
         run: python run.py discover
+
+      - name: Retention - downsample old snapshots (keep DB flat)
+        run: python run.py retention
+
+      - name: Weekly digest - "what changed" brief
+        run: python run.py digest

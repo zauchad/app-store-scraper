@@ -36,6 +36,7 @@ from src.analysis.estimates import lifetime_installs, paid_revenue_band  # noqa:
 from src.config import settings  # noqa: E402
 from src.db.session import init_db  # noqa: E402
 from src.reporting import (  # noqa: E402
+    category_growth_df,
     category_rating_history,
     has_any_data,
     latest_insight,
@@ -159,7 +160,8 @@ def badge(level: str, css: str, text: str = "") -> str:
 st.sidebar.markdown("### 📡 Market Intel")
 view = st.sidebar.radio(
     "Widok",
-    ["Opportunity Radar", "Niche Deep Dive", "Micro-Niche Explorer"],
+    ["Opportunity Radar", "Niche Deep Dive", "Micro-Niche Explorer",
+     "Co się zmieniło"],
     label_visibility="collapsed",
 )
 st.sidebar.divider()
@@ -297,6 +299,25 @@ if view == "Micro-Niche Explorer":
     st.stop()
 
 
+if view == "Co się zmieniło":
+    st.markdown(
+        '<div class="mi-hero"><h1>Co się zmieniło</h1>'
+        '<p>Cotygodniowy brief: rosnące nisze, najlepsze osiągalne okazje, '
+        'nowe mikro-nisze, breakouty, spadki jakości i porzucone forty — '
+        'wszystko w jednym miejscu.</p></div>',
+        unsafe_allow_html=True,
+    )
+    if not has_any_data():
+        st.info("Brak danych. Uruchom `python run.py scan`, a najlepszy sygnał "
+                "pojawi się po kilku dniach zbierania.")
+        st.stop()
+    weeks = st.slider("Okno wzrostu (tygodnie)", 1, 12, 4)
+    with st.spinner("Składam digest…"):
+        from src.pipeline.digest import build_digest
+        st.markdown(build_digest(weeks=weeks))
+    st.stop()
+
+
 if not has_any_data():
     st.markdown('<div class="mi-hero"><h1>Brak danych</h1>'
                 '<p>Uruchom pipeline, aby zobaczyć okazje.</p></div>',
@@ -376,10 +397,17 @@ if view == "Opportunity Radar":
     disp["CPI"] = disp["est_cpi_pln"].apply(pln)
     disp["Contest."] = disp["contestability"].apply(lambda x: f"{x:.2f}")
     disp["Skala (life.)"] = disp["median_rating_count"].apply(installs_label)
+    gdf = category_growth_df(weeks=4)
+    if not gdf.empty:
+        disp = disp.merge(gdf[["genre_id", "growth_pct"]], on="genre_id", how="left")
+        disp["Wzrost 4-tyg."] = disp["growth_pct"].apply(
+            lambda x: f"{x * 100:+.0f}%" if pd.notna(x) else "n/d")
+    else:
+        disp["Wzrost 4-tyg."] = "n/d"
     st.dataframe(
-        disp[["category", "opportunity_score", "Szansa", "avg_rating_top",
-              "Skala (life.)", "strong_incumbents", "mega_incumbents", "Contest.",
-              "est_installs_month", "CPI", "Werdykt"]]
+        disp[["category", "opportunity_score", "Szansa", "Wzrost 4-tyg.",
+              "avg_rating_top", "Skala (life.)", "strong_incumbents",
+              "mega_incumbents", "Contest.", "est_installs_month", "CPI", "Werdykt"]]
         .rename(columns={"category": "Kategoria", "opportunity_score": "Opportunity",
                          "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
                          "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies. (budżet)"}),

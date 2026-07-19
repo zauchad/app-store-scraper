@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     discover_top_categories: int = 5
     discover_keywords_per_category: int = 12
 
+    # --- Retention ---
+    # Keep every daily snapshot for this many days; older ones are downsampled to
+    # one per app per ISO-week to keep the DB roughly flat over time.
+    retention_daily_days: int = 60
+
     # ---- Derived helpers -------------------------------------------------
     @property
     def resolved_database_url(self) -> str:

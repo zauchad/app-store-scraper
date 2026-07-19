@@ -39,6 +39,12 @@ def main(argv=None) -> int:
     p_disc.add_argument("--top-k", type=int, default=None)
     p_disc.add_argument("--per-category", type=int, default=None)
 
+    p_ret = sub.add_parser("retention", help="Downsample old snapshots (keep DB flat)")
+    p_ret.add_argument("--daily-days", type=int, default=None)
+
+    p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
+    p_dig.add_argument("--weeks", type=int, default=4)
+
     p_kw = sub.add_parser("keywords", help="Micro-niche discovery below the top charts")
     p_kw.add_argument("--terms", type=str, default=None,
                       help="Comma-separated search terms to validate")
@@ -71,16 +77,30 @@ def main(argv=None) -> int:
         from src.pipeline.daily_scan import run_daily_scan
         from src.pipeline.deep_dive import run_deep_dive
         from src.pipeline.discover import run_discovery
+        from src.pipeline.retention import run_retention
 
         run_daily_scan(fetch_reviews=not args.no_reviews)
         run_deep_dive()
         run_discovery()
+        run_retention()
         return 0
 
     if args.command == "discover":
         from src.pipeline.discover import run_discovery
 
         run_discovery(top_k=args.top_k, per_category=args.per_category)
+        return 0
+
+    if args.command == "retention":
+        from src.pipeline.retention import run_retention
+
+        run_retention(daily_days=args.daily_days)
+        return 0
+
+    if args.command == "digest":
+        from src.pipeline.digest import run_digest
+
+        run_digest(weeks=args.weeks)
         return 0
 
     if args.command == "keywords":
