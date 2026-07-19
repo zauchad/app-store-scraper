@@ -154,7 +154,8 @@ def _scrape_reviews_for_category(
 ) -> None:
     provider = get_review_provider()
     logger.info("Fetching reviews via provider=%s", provider.name)
-    for app_id in app_ids:
+    # An app can appear in several charts of the same category; fetch it once.
+    for app_id in dict.fromkeys(app_ids):
         try:
             reviews = provider.fetch(app_id, settings.max_reviews_per_app)
         except Exception as exc:  # noqa: BLE001 - one app must not kill the run
@@ -162,8 +163,12 @@ def _scrape_reviews_for_category(
             continue
         if not reviews:
             continue
+        seen: set = set()  # RSS can repeat the same review id across pages
         with session_scope() as session:
             for r in reviews:
+                if r.review_id in seen:
+                    continue
+                seen.add(r.review_id)
                 if session.get(Review, r.review_id) is not None:
                     continue
                 session.add(
