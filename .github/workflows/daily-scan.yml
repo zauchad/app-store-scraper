@@ -1,0 +1,39 @@
+name: Daily Market Scan
+
+# Free daily data collection. Runs Level 1 (scrape + score) every day and
+# Level 2 (LLM deep dive on top niches). Requires repo secrets:
+#   DATABASE_URL     -> your Supabase Postgres connection string
+#   GEMINI_API_KEY   -> Google AI Studio key (free tier)
+on:
+  schedule:
+    # 05:10 UTC daily (charts refresh overnight). Adjust as you like.
+    - cron: "10 5 * * *"
+  workflow_dispatch: {}  # allow manual "Run workflow" button
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      STORE_COUNTRY: ${{ vars.STORE_COUNTRY || 'us' }}
+      TOP_N_APPS: ${{ vars.TOP_N_APPS || '50' }}
+      MARKETING_BUDGET_PLN: ${{ vars.MARKETING_BUDGET_PLN || '7500' }}
+      DEEP_DIVE_TOP_K: ${{ vars.DEEP_DIVE_TOP_K || '5' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Level 1 - scrape + Opportunity Score
+        run: python run.py scan
+
+      - name: Level 2 - LLM deep dive on top niches
+        run: python run.py deep-dive
