@@ -135,13 +135,17 @@ class CategoryScore(Base):
     num_apps: Mapped[int] = mapped_column(Integer, default=0)
     avg_rating_top: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     total_rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    median_rating_count: Mapped[int] = mapped_column(Integer, default=0)
     num_strong_incumbents: Mapped[int] = mapped_column(Integer, default=0)
+    num_mega_incumbents: Mapped[int] = mapped_column(Integer, default=0)
 
     # Normalised 0..1 component scores
     demand_score: Mapped[float] = mapped_column(Float, default=0.0)
     quality_gap_score: Mapped[float] = mapped_column(Float, default=0.0)
     low_saturation_score: Mapped[float] = mapped_column(Float, default=0.0)
     momentum_score: Mapped[float] = mapped_column(Float, default=0.0)
+    # 0..1 multiplier: can a lean founder realistically compete here?
+    contestability: Mapped[float] = mapped_column(Float, default=1.0)
 
     # Final 0..100
     opportunity_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)

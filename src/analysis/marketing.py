@@ -42,6 +42,7 @@ def estimate(
     base_cpi_usd: float,
     opportunity_0_100: float,
     quality_gap_0_1: float,
+    contestability: float,
     total_rating_count: int,
     num_apps: int,
     budget_pln: Optional[float] = None,
@@ -56,7 +57,7 @@ def estimate(
     reach_ratio = min((installs * 12) / incumbent_scale, 1.0)
 
     success = _success_probability(
-        opportunity_0_100 / 100.0, quality_gap_0_1, reach_ratio
+        opportunity_0_100 / 100.0, quality_gap_0_1, reach_ratio, contestability
     )
 
     return MarketingEstimate(
@@ -69,16 +70,22 @@ def estimate(
 
 
 def _success_probability(
-    opportunity: float, quality_gap: float, reach_ratio: float
+    opportunity: float, quality_gap: float, reach_ratio: float, contestability: float
 ) -> float:
-    """Blend three drivers into a 0..1 odds estimate.
+    """Blend four drivers into a 0..1 odds estimate.
 
-      * opportunity   - is the niche structurally attractive?
-      * quality_gap   - room for a better product = organic/word-of-mouth upside
-      * reach_ratio   - can the budget buy a foothold vs incumbents?
+      * opportunity     - is the niche structurally attractive?
+      * quality_gap     - room for a better product = organic/word-of-mouth upside
+      * reach_ratio     - can the budget buy a foothold vs incumbents?
+      * contestability  - can a lean player even compete (giant guardrail)?
 
     Weighted, then squashed so extremes stay in (0,1).
     """
-    raw = 0.45 * opportunity + 0.30 * quality_gap + 0.25 * reach_ratio
+    raw = (
+        0.30 * opportunity
+        + 0.25 * quality_gap
+        + 0.20 * reach_ratio
+        + 0.25 * contestability
+    )
     # gentle floor/ceiling so nothing reads as 0% or 100%
     return max(0.03, min(0.97, raw))

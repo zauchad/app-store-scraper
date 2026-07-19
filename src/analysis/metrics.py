@@ -1,18 +1,27 @@
 """Level 1 quantitative aggregates per category (no LLM, cheap, daily).
 
-The whole point: turn a pile of snapshots into four *business signals* that,
+The whole point: turn a pile of snapshots into *business signals* that,
 combined, distinguish a real opportunity from noise:
 
-  1. DEMAND        - is there a paying/engaged audience? (sum of rating counts)
-  2. QUALITY GAP   - are incumbents disappointing users? (low avg rating = gap)
-  3. SATURATION    - how many entrenched "fortress" apps guard the niche?
-  4. MOMENTUM      - is the niche heating up? (rank/review-count change vs prior)
+  1. DEMAND         - is there a healthy audience for a TYPICAL app here?
+                      We use the MEDIAN review count, NOT the sum. Sum is
+                      dominated by 1-2 giants (e.g. WhatsApp) and makes
+                      giant-owned markets look "high demand" when they are
+                      actually un-enterable. Median = the everyday player's
+                      traction = real, contestable demand.
+  2. QUALITY GAP    - are incumbents disappointing users? (low avg rating = gap)
+  3. SATURATION     - how many entrenched "fortress" apps guard the niche?
+  4. GIANTS (mega)  - how many un-beatable mega-incumbents own the space?
+                      This is the guardrail that stops us recommending
+                      "David vs 5 Goliaths" markets like Social Networking.
+  5. MOMENTUM       - is the niche heating up? (review-count change vs prior)
 
-Momentum needs history, so on day 1 it is neutral and it sharpens each day the
-scan runs. That's by design - momentum is the noise filter.
+Momentum needs history, so on day 1 it is dropped from the score (not faked as
+neutral) and it sharpens each day the scan runs.
 """
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -25,9 +34,12 @@ from src.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# An incumbent is a "fortress" if it's both loved AND large -> hard to displace.
-FORTRESS_MIN_RATING = 4.5
-FORTRESS_MIN_REVIEWS = 5000
+# A "fortress" is a serious, well-established player (loved AND sizeable).
+FORTRESS_MIN_RATING = 4.3
+FORTRESS_MIN_REVIEWS = 50_000
+# A "mega" incumbent is a market-owning giant you cannot out-spend on a lean
+# budget. Their presence should collapse the opportunity score.
+MEGA_MIN_REVIEWS = 3_000_000
 
 
 @dataclass
@@ -37,8 +49,10 @@ class CategoryAggregate:
     num_apps: int
     avg_rating_top: Optional[float]
     total_rating_count: int
+    median_rating_count: int
     num_strong_incumbents: int
-    raw_momentum: float  # signed avg rank improvement vs previous snapshot
+    num_mega_incumbents: int
+    raw_momentum: float  # signed avg review-count growth vs previous snapshot
 
 
 def _latest_snapshot_per_app(
@@ -105,12 +119,14 @@ def compute_category_aggregate(
     counts = [s.rating_count or 0 for s in latest]
     avg_rating = round(sum(ratings) / len(ratings), 3) if ratings else None
     total_counts = int(sum(counts))
+    median_counts = int(statistics.median(counts)) if counts else 0
     fortresses = sum(
         1
         for s in latest
         if (s.rating_avg or 0) >= FORTRESS_MIN_RATING
         and (s.rating_count or 0) >= FORTRESS_MIN_REVIEWS
     )
+    megas = sum(1 for s in latest if (s.rating_count or 0) >= MEGA_MIN_REVIEWS)
 
     # Momentum: compare current review counts to the previous run.
     run_ts = max(s.captured_at for s in latest)
@@ -123,7 +139,9 @@ def compute_category_aggregate(
         num_apps=len(latest),
         avg_rating_top=avg_rating,
         total_rating_count=total_counts,
+        median_rating_count=median_counts,
         num_strong_incumbents=fortresses,
+        num_mega_incumbents=megas,
         raw_momentum=momentum,
     )
 
