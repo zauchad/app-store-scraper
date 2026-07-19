@@ -32,8 +32,12 @@ def main(argv=None) -> int:
     p_deep.add_argument("--top-k", type=int, default=None)
     p_deep.add_argument("--genre", type=int, action="append", help="Specific genre id(s)")
 
-    p_all = sub.add_parser("all", help="Full daily job: scan + deep-dive")
+    p_all = sub.add_parser("all", help="Full daily job: scan + deep-dive + discover")
     p_all.add_argument("--no-reviews", action="store_true")
+
+    p_disc = sub.add_parser("discover", help="Auto-drill top categories into micro-niches (LLM)")
+    p_disc.add_argument("--top-k", type=int, default=None)
+    p_disc.add_argument("--per-category", type=int, default=None)
 
     p_kw = sub.add_parser("keywords", help="Micro-niche discovery below the top charts")
     p_kw.add_argument("--terms", type=str, default=None,
@@ -66,9 +70,17 @@ def main(argv=None) -> int:
     if args.command == "all":
         from src.pipeline.daily_scan import run_daily_scan
         from src.pipeline.deep_dive import run_deep_dive
+        from src.pipeline.discover import run_discovery
 
         run_daily_scan(fetch_reviews=not args.no_reviews)
         run_deep_dive()
+        run_discovery()
+        return 0
+
+    if args.command == "discover":
+        from src.pipeline.discover import run_discovery
+
+        run_discovery(top_k=args.top_k, per_category=args.per_category)
         return 0
 
     if args.command == "keywords":

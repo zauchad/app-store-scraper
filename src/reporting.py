@@ -121,6 +121,7 @@ def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
                 "quality_gap": s.quality_gap_score,
                 "low_saturation": s.low_saturation_score,
                 "contestability": s.contestability,
+                "search_interest": s.search_interest,
                 "avg_rating_top": s.avg_rating_top,
                 "median_rating_count": s.median_rating_count,
                 "strong_incumbents": s.num_strong_incumbents,

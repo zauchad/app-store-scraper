@@ -203,6 +203,8 @@ class KeywordScore(Base):
     quality_gap_score: Mapped[float] = mapped_column(Float, default=0.0)
     low_saturation_score: Mapped[float] = mapped_column(Float, default=0.0)
     contestability: Mapped[float] = mapped_column(Float, default=1.0)
+    # 0..1 search-interest proxy (autocomplete popularity); None if unknown.
+    search_interest: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     opportunity_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
 
     est_cpi_pln: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

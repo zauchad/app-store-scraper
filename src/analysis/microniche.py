@@ -30,6 +30,7 @@ from src.db.session import session_scope
 from src.logging_config import get_logger
 from src.scraper.categories import CATEGORY_SEEDS
 from src.scraper.itunes_client import AppMetadata, ItunesClient
+from src.scraper.search_volume import get_volume_provider
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,7 @@ class KeywordResult:
     quality_gap_score: float
     low_saturation_score: float
     contestability: float
+    search_interest: Optional[float]
     opportunity_score: float
     marketing: MarketingEstimate
     top_apps: List[dict]
@@ -69,7 +71,10 @@ def _cpi_for_genre(genre_id: Optional[int]) -> float:
 
 
 def score_keyword(
-    term: str, apps: List[AppMetadata], genre_id: Optional[int] = None
+    term: str,
+    apps: List[AppMetadata],
+    genre_id: Optional[int] = None,
+    search_interest: Optional[float] = None,
 ) -> Optional[KeywordResult]:
     if not apps:
         return None
@@ -84,7 +89,13 @@ def score_keyword(
     total_count = int(sum(counts))
     num_fortress, num_mega = count_incumbents(rows)
 
-    demand = min(math.log1p(median_count) / math.log1p(DEMAND_REF), 1.0)
+    # DEMAND = blend of app engagement (median ratings) and search interest.
+    engagement = min(math.log1p(median_count) / math.log1p(DEMAND_REF), 1.0)
+    if search_interest is None:
+        demand = engagement
+    else:
+        w = settings.demand_search_weight
+        demand = (1.0 - w) * engagement + w * search_interest
     quality_gap = absolute_quality_gap(avg_rating)
     low_saturation = max(0.0, 1.0 - num_fortress / SATURATION_REF)
 
@@ -129,6 +140,7 @@ def score_keyword(
         quality_gap_score=round(quality_gap, 4),
         low_saturation_score=round(low_saturation, 4),
         contestability=round(contest, 4),
+        search_interest=round(search_interest, 4) if search_interest is not None else None,
         opportunity_score=opp,
         marketing=mkt,
         top_apps=top_apps,
@@ -140,13 +152,15 @@ def analyze_terms(
 ) -> List[KeywordResult]:
     """Search + score a batch of candidate micro-niches, persist, return ranked."""
     client = ItunesClient(country=settings.store_country)
+    volume = get_volume_provider()
     results: List[KeywordResult] = []
     for term in terms:
         term = term.strip()
         if not term:
             continue
         apps = client.search(term, limit=50)
-        res = score_keyword(term, apps, genre_id)
+        interest = volume.interest(term)
+        res = score_keyword(term, apps, genre_id, search_interest=interest)
         if res is not None:
             results.append(res)
 
@@ -177,6 +191,7 @@ def _persist(results: List[KeywordResult], source: str) -> None:
                     quality_gap_score=r.quality_gap_score,
                     low_saturation_score=r.low_saturation_score,
                     contestability=r.contestability,
+                    search_interest=r.search_interest,
                     opportunity_score=r.opportunity_score,
                     est_cpi_pln=r.marketing.est_cpi_pln,
                     est_installs_month=r.marketing.est_installs_month,

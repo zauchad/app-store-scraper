@@ -32,13 +32,24 @@ poziomie słów kluczowych / długiego ogona. Pętla:
 ```
 LLM proponuje konkretne mikro-nisze (np. "budgeting for couples")
    -> Search API zwraca apki realnie konkurujące o to zapytanie
+   -> sygnał search-interest (autocomplete App Store) + zaangażowanie apek = POPYT
    -> ten sam scoring (Opportunity = atrakcyjność x contestability)
    -> ranking mikro-nisz z guardrailem gigantów
 ```
 
 Przykład z żywych danych: kategoria *Finance* = 3/100 (rynek gigantów), ale
-mikro-nisza *"budgeting for couples"* = **61/100** (zero gigantów, konkurencja
+mikro-nisza *"budgeting for couples"* = **55/100** (zero gigantów, konkurencja
 fatalnie oceniana). Tego nie widać na poziomie kategorii.
+
+**Sygnał search-interest (popyt wyszukiwań).** Prawdziwy wolumen wyszukiwań to
+domena płatnych API (Apple Search Ads popularity 5–100, AppTweak, Sensor Tower).
+Domyślnie używamy **darmowego proxy**: autocomplete App Store (`MZSearchHints`),
+które Apple sortuje ~wg popularności. Odpowiada na pytanie „czy ludzie w ogóle to
+wyszukują?" (0..1). Dzięki temu odróżniamy nisze z realnym popytem (*"speech
+therapy practice"*, *"adhd focus timer"* → ~1.0) od czystych luk jakości bez
+ruchu (*"post surgery recovery"* → 0.05: świetna luka, ale cienki popyt).
+Provider jest wymienny (`VOLUME_PROVIDER`) — podmienisz proxy na płatne ASO API
+bez dotykania scoringu. Waga miksu popytu: `DEMAND_SEARCH_WEIGHT` (domyślnie 0.5).
 
 ```bash
 # Waliduj własne pomysły na nisze:
@@ -47,8 +58,19 @@ python run.py keywords --genre 6015 --terms "budgeting for couples, invoice for 
 python run.py keywords --generate --theme "personal finance for gig workers" --genre 6015 --n 15
 ```
 
+**Automatyczne drążenie (Poziom 3 bez klikania).** `python run.py discover` bierze
+najlepsze *kontestowalne* kategorie z Poziomu 1 (pomija rynki gigantów), LLM sam
+generuje dla nich mikro-nisze, skanuje je i zapisuje (`source="auto"`). Odpala się
+w codziennym cronie po `scan` + `deep-dive`, więc dashboard zawsze pokazuje świeże,
+wygrywalne nisze bez ręcznej pracy.
+
+```bash
+python run.py discover                      # top kategorie -> auto mikro-nisze
+python run.py discover --top-k 5 --per-category 12
+```
+
 W dashboardzie: zakładka **Micro-Niche Explorer** (generuj AI / wpisz ręcznie ->
-ranking + szczegóły konkurentów).
+ranking + szczegóły konkurentów + search-interest).
 
 ## Architektura
 
@@ -97,7 +119,9 @@ python run.py scan                  # Poziom 1 (codzienny)
 python run.py scan --no-reviews     # szybciej, bez pobierania recenzji
 python run.py deep-dive             # LLM dla TOP-K nisz
 python run.py deep-dive --genre 6013
-python run.py all                   # scan + deep-dive (pełny job dzienny)
+python run.py discover              # Poziom 3: auto-drążenie top kategorii w mikro-nisze
+python run.py keywords --terms "..."  # ręczna walidacja mikro-nisz
+python run.py all                   # scan + deep-dive + discover (pełny job dzienny)
 ```
 
 ## Wdrożenie produkcyjne (darmowe) — krok po kroku

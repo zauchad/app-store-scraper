@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # --- Deep dive ---
     deep_dive_top_k: int = 5
 
+    # --- Micro-niche discovery ---
+    # Search-interest proxy: "proxy" (free autocomplete) or "none".
+    volume_provider: str = "proxy"
+    # Weight of search-interest vs app-engagement in keyword demand (0..1).
+    demand_search_weight: float = 0.5
+    # Auto-discovery: how many top categories to drill into, keywords each.
+    discover_top_categories: int = 5
+    discover_keywords_per_category: int = 12
+
     # ---- Derived helpers -------------------------------------------------
     @property
     def resolved_database_url(self) -> str:

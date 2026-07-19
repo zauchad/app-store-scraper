@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -54,9 +54,37 @@ def get_session_factory() -> sessionmaker:
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist. Safe to call repeatedly."""
-    Base.metadata.create_all(get_engine())
+    """Create tables and add any missing columns. Safe to call repeatedly.
+
+    Lightweight, Alembic-free migration: after creating tables, we ADD COLUMN
+    for any model column missing from an existing table. This keeps a long-lived
+    DB (SQLite locally, Supabase in prod) in sync as the schema evolves, without
+    forcing you to drop your data on every model change.
+    """
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     logger.info("Schema ensured (%d tables)", len(Base.metadata.tables))
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    insp = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        existing = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            col_type = col.type.compile(dialect=engine.dialect)
+            try:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col_type}')
+                    )
+                logger.info("Migrated: added %s.%s", table.name, col.name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not add column %s.%s: %s", table.name, col.name, exc)
 
 
 @contextmanager

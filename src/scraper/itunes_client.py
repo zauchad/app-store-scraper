@@ -232,6 +232,39 @@ class ItunesClient:
         logger.info("Search %r -> %d apps", term, len(out))
         return out
 
+    # ---- search hints (free search-interest proxy) ----------------------
+    def search_hints(self, term: str) -> List[str]:
+        """Apple's autocomplete suggestions, ordered ~by search popularity.
+
+        Free, keyless. Used as a proxy for "do people actually search this?".
+        Returns a list of suggested terms (may be empty).
+        """
+        import plistlib
+        from urllib.parse import quote
+
+        url = (
+            "https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/wa/"
+            f"hints?clientApplication=Software&term={quote(term)}"
+        )
+        try:
+            resp = self.session.get(
+                url, timeout=DEFAULT_TIMEOUT,
+                headers={"X-Apple-Store-Front": "143441-1,29"},
+            )
+            resp.raise_for_status()
+            data = plistlib.loads(resp.content)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Search hints failed term=%r: %s", term, exc)
+            return []
+        hints = data.get("hints", []) if isinstance(data, dict) else []
+        out: List[str] = []
+        for h in hints:
+            if isinstance(h, dict) and h.get("term"):
+                out.append(str(h["term"]))
+            elif isinstance(h, str):
+                out.append(h)
+        return out
+
     # ---- reviews (best effort) ------------------------------------------
     def reviews(self, app_id: int, pages: int = 5) -> List[ReviewItem]:
         """Fetch recent reviews. BEST EFFORT - returns [] on empty feed."""

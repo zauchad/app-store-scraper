@@ -255,11 +255,13 @@ if view == "Micro-Niche Explorer":
     krow = kdf[kdf["term"] == pick].iloc[0]
     lvl, css, expl = verdict(krow)
     st.markdown(badge(lvl, css, expl), unsafe_allow_html=True)
-    d1, d2, d3, d4 = st.columns(4)
+    d1, d2, d3, d4, d5 = st.columns(5)
     d1.metric("Opportunity", f"{krow['opportunity_score']:.0f}/100")
     d2.metric("Popyt (mediana ocen)", num(krow["median_rating_count"]))
-    d3.metric("Luka jakości", f"{krow['quality_gap']:.2f}")
-    d4.metric("Contestability", f"{krow['contestability']:.2f}")
+    si = krow.get("search_interest")
+    d3.metric("Search interest", f"{si:.2f}" if si is not None and pd.notna(si) else "-")
+    d4.metric("Luka jakości", f"{krow['quality_gap']:.2f}")
+    d5.metric("Contestability", f"{krow['contestability']:.2f}")
     apps = krow.get("top_apps") or []
     if apps:
         st.caption("Aplikacje konkurujące o to zapytanie:")

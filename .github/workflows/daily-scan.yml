@@ -37,3 +37,6 @@ jobs:
 
       - name: Level 2 - LLM deep dive on top niches
         run: python run.py deep-dive
+
+      - name: Level 3 - auto-discover micro-niches (drill top categories)
+        run: python run.py discover
