@@ -20,9 +20,35 @@ POZIOM 2 (tylko TOP-K nisz, LLM)
 ```
 
 Nie musisz ręcznie wskazywać kategorii — lista kategorii App Store jest skończona,
-więc system skanuje je **wszystkie automatycznie**. Prawdziwe mikro-nisze wyłaniają
-się oddolnie z klastrowania recenzji przez LLM. **Gry są domyślnie wykluczone**
+więc system skanuje je **wszystkie automatycznie**. **Gry są domyślnie wykluczone**
 (kapitałochłonna produkcja) — zmienisz to w `.env`.
+
+### POZIOM 3 — Micro-Niche Explorer (poniżej top-chartów)
+
+Top-charty każdej kategorii są z definicji własnością gigantów, więc na ich
+poziomie „wszystko wygląda na nasycone". Prawdziwe okazje żyją niżej — na
+poziomie słów kluczowych / długiego ogona. Pętla:
+
+```
+LLM proponuje konkretne mikro-nisze (np. "budgeting for couples")
+   -> Search API zwraca apki realnie konkurujące o to zapytanie
+   -> ten sam scoring (Opportunity = atrakcyjność x contestability)
+   -> ranking mikro-nisz z guardrailem gigantów
+```
+
+Przykład z żywych danych: kategoria *Finance* = 3/100 (rynek gigantów), ale
+mikro-nisza *"budgeting for couples"* = **61/100** (zero gigantów, konkurencja
+fatalnie oceniana). Tego nie widać na poziomie kategorii.
+
+```bash
+# Waliduj własne pomysły na nisze:
+python run.py keywords --genre 6015 --terms "budgeting for couples, invoice for freelancers"
+# Albo pozwól LLM zaproponować kandydatów dla motywu:
+python run.py keywords --generate --theme "personal finance for gig workers" --genre 6015 --n 15
+```
+
+W dashboardzie: zakładka **Micro-Niche Explorer** (generuj AI / wpisz ręcznie ->
+ranking + szczegóły konkurentów).
 
 ## Architektura
 

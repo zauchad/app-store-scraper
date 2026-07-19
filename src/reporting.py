@@ -10,7 +10,13 @@ from typing import Dict, List, Optional
 import pandas as pd
 from sqlalchemy import select
 
-from src.db.models import App, Category, CategoryInsight, CategoryScore
+from src.db.models import (
+    App,
+    Category,
+    CategoryInsight,
+    CategoryScore,
+    KeywordScore,
+)
 from src.db.session import session_scope
 
 
@@ -89,3 +95,45 @@ def top_apps_for_category(genre_id: int, limit: int = 15) -> pd.DataFrame:
 def has_any_data() -> bool:
     with session_scope() as session:
         return session.query(CategoryScore).first() is not None
+
+
+def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
+    """Most recent score per keyword term (micro-niches), ranked."""
+    with session_scope() as session:
+        rows = session.execute(
+            select(KeywordScore).order_by(KeywordScore.computed_at.desc()).limit(limit)
+        ).scalars().all()
+
+    seen = set()
+    records: List[Dict] = []
+    for s in rows:
+        key = s.term.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(
+            {
+                "term": s.term,
+                "genre_id": s.genre_id,
+                "opportunity_score": s.opportunity_score,
+                "success_probability": s.success_probability,
+                "demand": s.demand_score,
+                "quality_gap": s.quality_gap_score,
+                "low_saturation": s.low_saturation_score,
+                "contestability": s.contestability,
+                "avg_rating_top": s.avg_rating_top,
+                "median_rating_count": s.median_rating_count,
+                "strong_incumbents": s.num_strong_incumbents,
+                "mega_incumbents": s.num_mega_incumbents,
+                "num_results": s.num_results,
+                "est_cpi_pln": s.est_cpi_pln,
+                "est_installs_month": s.est_installs_month,
+                "marketing_cost_pln": s.marketing_cost_pln,
+                "top_apps": s.top_apps,
+                "computed_at": s.computed_at,
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("opportunity_score", ascending=False).reset_index(drop=True)
+    return df

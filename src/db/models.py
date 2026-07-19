@@ -157,6 +157,63 @@ class CategoryScore(Base):
     success_probability: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
 
+class Keyword(Base):
+    """A candidate micro-niche expressed as an App Store search term.
+
+    Analytical purpose: top charts are owned by giants, so real openings live at
+    the keyword / long-tail level. A keyword is a *hypothesis* ("sleep tracker
+    for shift workers") that we then validate quantitatively via the Search API.
+    """
+
+    __tablename__ = "keywords"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    term: Mapped[str] = mapped_column(String(256), index=True)
+    genre_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="manual")  # manual|llm|seed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+
+
+class KeywordScore(Base):
+    """Quantitative micro-niche score for a keyword, per run.
+
+    Same model as categories (Opportunity = attractiveness x contestability) but
+    computed on the apps that actually rank for the term - so it answers: "is
+    THIS specific niche winnable by a lean founder?"
+    """
+
+    __tablename__ = "keyword_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    keyword_id: Mapped[int] = mapped_column(ForeignKey("keywords.id"), index=True)
+    term: Mapped[str] = mapped_column(String(256), index=True)  # denormalised
+    genre_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), index=True
+    )
+
+    num_results: Mapped[int] = mapped_column(Integer, default=0)
+    avg_rating_top: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    median_rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    num_strong_incumbents: Mapped[int] = mapped_column(Integer, default=0)
+    num_mega_incumbents: Mapped[int] = mapped_column(Integer, default=0)
+
+    demand_score: Mapped[float] = mapped_column(Float, default=0.0)
+    quality_gap_score: Mapped[float] = mapped_column(Float, default=0.0)
+    low_saturation_score: Mapped[float] = mapped_column(Float, default=0.0)
+    contestability: Mapped[float] = mapped_column(Float, default=1.0)
+    opportunity_score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+
+    est_cpi_pln: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    est_installs_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    marketing_cost_pln: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    success_probability: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Snapshot of the top competing apps (name, developer, rating, count).
+    top_apps: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+
 class CategoryInsight(Base):
     """LLM-generated synthesis per category (Level 2 - the expensive step).
 

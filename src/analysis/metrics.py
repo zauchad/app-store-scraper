@@ -29,17 +29,15 @@ from typing import Dict, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.analysis.scoring import (
+    FORTRESS_MIN_RATING,
+    FORTRESS_MIN_REVIEWS,
+    MEGA_MIN_REVIEWS,
+)
 from src.db.models import AppSnapshot, Category
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-# A "fortress" is a serious, well-established player (loved AND sizeable).
-FORTRESS_MIN_RATING = 4.3
-FORTRESS_MIN_REVIEWS = 50_000
-# A "mega" incumbent is a market-owning giant you cannot out-spend on a lean
-# budget. Their presence should collapse the opportunity score.
-MEGA_MIN_REVIEWS = 3_000_000
 
 
 @dataclass

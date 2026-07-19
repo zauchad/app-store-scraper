@@ -32,24 +32,16 @@ from typing import Dict, List
 
 from src.analysis.marketing import MarketingEstimate, estimate
 from src.analysis.metrics import CategoryAggregate, compute_all_aggregates
+from src.analysis.scoring import (
+    absolute_quality_gap,
+    contestability,
+    effective_weights,
+)
 from src.db.models import Category, CategoryScore
 from src.db.session import session_scope
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-# Base weights (used when momentum history exists). Renormalised without
-# momentum on day 1.
-WEIGHTS = {
-    "demand": 0.25,
-    "quality_gap": 0.30,
-    "low_saturation": 0.20,
-    "momentum": 0.25,
-}
-
-# Absolute quality bar: incumbents rated at/above this = essentially no gap.
-QUALITY_BAR = 4.6
-QUALITY_GAP_SPAN = 1.0  # gap saturates once incumbents are ~1.0 star below bar
 
 
 @dataclass
@@ -74,18 +66,6 @@ def _minmax(values: List[float]) -> Dict[int, float]:
     return {i: (v - lo) / (hi - lo) for i, v in enumerate(values)}
 
 
-def _contestability(num_mega: int, num_fortress: int) -> float:
-    """0..1 multiplier: can a lean founder realistically contest this market?
-
-    * mega giants dominate the penalty (each one roughly halves the chance).
-    * fortresses add a softer, saturation-style penalty.
-    sqrt softens the product so a single fortress doesn't nuke the score.
-    """
-    mega_penalty = 1.0 / (1.0 + num_mega)
-    fortress_penalty = 1.0 / (1.0 + num_fortress / 8.0)
-    return math.sqrt(mega_penalty * fortress_penalty)
-
-
 def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory]:
     if not aggregates:
         return []
@@ -101,14 +81,14 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
     mom_n = _minmax(mom_raw)
 
     has_momentum = any(abs(m) > 1e-9 for m in mom_raw)
-    weights = _effective_weights(has_momentum)
+    weights = effective_weights(has_momentum)
 
     cpi_by_genre = _cpi_lookup()
 
     scored: List[ScoredCategory] = []
     for i, agg in enumerate(aggregates):
         demand = demand_n[i]
-        quality_gap = _absolute_quality_gap(agg.avg_rating_top)
+        quality_gap = absolute_quality_gap(agg.avg_rating_top)
         low_saturation = 1.0 - sat_n[i]
         momentum = mom_n[i] if has_momentum else 0.0
 
@@ -118,7 +98,7 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
             + weights["low_saturation"] * low_saturation
             + weights["momentum"] * momentum
         )
-        contest = _contestability(
+        contest = contestability(
             agg.num_mega_incumbents, agg.num_strong_incumbents
         )
         opp = round(100.0 * attractiveness * contest, 2)
@@ -147,28 +127,6 @@ def score_categories(aggregates: List[CategoryAggregate]) -> List[ScoredCategory
 
     scored.sort(key=lambda s: s.opportunity_score, reverse=True)
     return scored
-
-
-def _absolute_quality_gap(avg_rating: float | None) -> float:
-    """How far incumbents sit below the quality bar, clamped to 0..1.
-
-    avg 4.6+ -> 0.0 (no gap); avg 3.6 -> 1.0 (wide open). Missing -> mild 0.4.
-    """
-    if avg_rating is None:
-        return 0.4
-    gap = (QUALITY_BAR - avg_rating) / QUALITY_GAP_SPAN
-    return max(0.0, min(1.0, gap))
-
-
-def _effective_weights(has_momentum: bool) -> Dict[str, float]:
-    if has_momentum:
-        return WEIGHTS
-    # Drop momentum and renormalise the rest so they still sum to 1.
-    base = {k: v for k, v in WEIGHTS.items() if k != "momentum"}
-    total = sum(base.values())
-    weights = {k: v / total for k, v in base.items()}
-    weights["momentum"] = 0.0
-    return weights
 
 
 def _cpi_lookup() -> Dict[int, float]:

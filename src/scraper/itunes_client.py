@@ -204,6 +204,34 @@ class ItunesClient:
             icon_url=r.get("artworkUrl100"),
         )
 
+    # ---- search (micro-niche discovery) ---------------------------------
+    def search(self, term: str, limit: int = 50) -> List[AppMetadata]:
+        """iTunes Search API - free, reliable, returns full metadata + ratings.
+
+        This is the engine of micro-niche discovery: it returns the apps that
+        actually compete for a specific search term (a candidate niche), each
+        with its exact rating avg/count, so we can score the niche directly.
+        """
+        from urllib.parse import quote_plus
+
+        limit = max(1, min(limit, 200))
+        url = (
+            f"{BASE}/search?term={quote_plus(term)}&country={self.country}"
+            f"&entity=software&limit={limit}"
+        )
+        try:
+            data = self._get_json(url)
+        except Exception as exc:  # noqa: BLE001 - one term must not kill a batch
+            logger.warning("Search failed term=%r: %s", term, exc)
+            return []
+        out: List[AppMetadata] = []
+        for r in data.get("results", []) or []:
+            meta = self._parse_lookup(r)
+            if meta:
+                out.append(meta)
+        logger.info("Search %r -> %d apps", term, len(out))
+        return out
+
     # ---- reviews (best effort) ------------------------------------------
     def reviews(self, app_id: int, pages: int = 5) -> List[ReviewItem]:
         """Fetch recent reviews. BEST EFFORT - returns [] on empty feed."""

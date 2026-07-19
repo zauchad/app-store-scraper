@@ -35,6 +35,16 @@ def main(argv=None) -> int:
     p_all = sub.add_parser("all", help="Full daily job: scan + deep-dive")
     p_all.add_argument("--no-reviews", action="store_true")
 
+    p_kw = sub.add_parser("keywords", help="Micro-niche discovery below the top charts")
+    p_kw.add_argument("--terms", type=str, default=None,
+                      help="Comma-separated search terms to validate")
+    p_kw.add_argument("--generate", action="store_true",
+                      help="Let the LLM propose candidate niche keywords")
+    p_kw.add_argument("--theme", type=str, default=None,
+                      help="Theme/context for --generate (e.g. 'habit tracking')")
+    p_kw.add_argument("--genre", type=int, default=None, help="Category genre id")
+    p_kw.add_argument("--n", type=int, default=15, help="How many keywords to generate")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -59,6 +69,25 @@ def main(argv=None) -> int:
 
         run_daily_scan(fetch_reviews=not args.no_reviews)
         run_deep_dive()
+        return 0
+
+    if args.command == "keywords":
+        from src.pipeline.keyword_scan import run_keyword_scan
+
+        terms = [t for t in (args.terms.split(",") if args.terms else []) if t.strip()]
+        results = run_keyword_scan(
+            terms=terms,
+            theme=args.theme,
+            genre_id=args.genre,
+            generate=args.generate,
+            n=args.n,
+        )
+        for r in results:
+            logger.info(
+                "%-32s opp=%5.1f contest=%.2f giants=%d fortresses=%d gap=%.2f",
+                r.term, r.opportunity_score, r.contestability,
+                r.num_mega_incumbents, r.num_strong_incumbents, r.quality_gap_score,
+            )
         return 0
 
     parser.print_help()

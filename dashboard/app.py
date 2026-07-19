@@ -37,9 +37,11 @@ from src.db.session import init_db  # noqa: E402
 from src.reporting import (  # noqa: E402
     has_any_data,
     latest_insight,
+    latest_keyword_scores_df,
     latest_scores_df,
     top_apps_for_category,
 )
+from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
 st.set_page_config(
     page_title="Market Intel — App Store Niche Radar",
@@ -144,7 +146,11 @@ def badge(level: str, css: str, text: str = "") -> str:
 #  Sidebar
 # --------------------------------------------------------------------------- #
 st.sidebar.markdown("### 📡 Market Intel")
-view = st.sidebar.radio("Widok", ["Opportunity Radar", "Niche Deep Dive"], label_visibility="collapsed")
+view = st.sidebar.radio(
+    "Widok",
+    ["Opportunity Radar", "Niche Deep Dive", "Micro-Niche Explorer"],
+    label_visibility="collapsed",
+)
 st.sidebar.divider()
 st.sidebar.caption(f"Storefront: **{settings.store_country.upper()}**")
 st.sidebar.caption(f"Budżet marketingowy: **{pln(settings.marketing_budget_pln)}/mies.**")
@@ -163,6 +169,106 @@ with st.sidebar.expander("Jak liczymy Opportunity Score?"):
         "wejść. Każdy gigant (>3 mln ocen) drastycznie go obniża — dlatego "
         "rynki typu Social Networking lądują nisko, mimo dużego popytu."
     )
+
+# --------------------------------------------------------------------------- #
+#  View 3: Micro-Niche Explorer (self-contained, no category scan required)
+# --------------------------------------------------------------------------- #
+if view == "Micro-Niche Explorer":
+    st.markdown(
+        '<div class="mi-hero"><h1>Micro-Niche Explorer</h1>'
+        '<p>Poziom PONIŻEJ top-chartów. LLM proponuje konkretne mikro-nisze '
+        '(słowa kluczowe), a Search API waliduje je ilościowo tym samym '
+        'guardrailem contestability. Tu żyją realne okazje.</p></div>',
+        unsafe_allow_html=True,
+    )
+
+    enabled = [s for s in CATEGORY_SEEDS if s.enabled]
+    genre_options = {"— dowolna —": None}
+    genre_options.update({s.name: s.genre_id for s in enabled})
+
+    with st.form("kw_form"):
+        colf1, colf2 = st.columns([3, 2])
+        with colf1:
+            terms_raw = st.text_area(
+                "Słowa kluczowe (po przecinku lub w nowych liniach)",
+                placeholder="sleep tracker for shift workers, budgeting for couples",
+                height=90,
+            )
+        with colf2:
+            genre_name = st.selectbox("Kontekst kategorii (CPI + LLM)", list(genre_options))
+            theme = st.text_input("Motyw dla generatora AI", placeholder="np. habit tracking for ADHD")
+        cA, cB = st.columns(2)
+        gen = cA.checkbox("Wygeneruj kandydatów przez AI", value=False,
+                          help="Wymaga GEMINI_API_KEY. LLM zaproponuje mikro-nisze dla motywu/kategorii.")
+        n_kw = cB.slider("Ile wygenerować", 5, 25, 12)
+        submitted = st.form_submit_button("Analizuj mikro-nisze", type="primary", use_container_width=True)
+
+    if submitted:
+        genre_id = genre_options[genre_name]
+        terms = [t.strip() for t in terms_raw.replace("\n", ",").split(",") if t.strip()]
+        if gen and not settings.llm_enabled:
+            st.warning("Generator AI wymaga GEMINI_API_KEY. Podaj słowa ręcznie albo skonfiguruj klucz.")
+        elif not terms and not gen:
+            st.warning("Podaj przynajmniej jedno słowo kluczowe albo włącz generator AI.")
+        else:
+            with st.spinner("Szukam i oceniam mikro-nisze (Search API + LLM)…"):
+                from src.pipeline.keyword_scan import run_keyword_scan
+                try:
+                    run_keyword_scan(terms=terms, theme=theme, genre_id=genre_id,
+                                     generate=gen, n=n_kw)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Analiza nie powiodła się: {exc}")
+
+    kdf = latest_keyword_scores_df()
+    if kdf.empty:
+        st.info("Brak przeanalizowanych mikro-nisz. Wpisz słowa kluczowe powyżej i kliknij Analizuj.")
+        st.stop()
+
+    top = kdf.iloc[0]
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Najlepsza mikro-nisza", top["term"], f"{top['opportunity_score']:.0f}/100")
+    k2.metric("Szansa sukcesu", pct(top["success_probability"]))
+    k3.metric("Giganci w top", num(top["mega_incumbents"]))
+    k4.metric("Przeanalizowanych", len(kdf))
+
+    st.divider()
+    st.markdown("#### Ranking mikro-nisz")
+    kdisp = kdf.copy()
+    kdisp["Werdykt"] = kdisp.apply(lambda r: verdict(r)[0], axis=1)
+    kdisp["Szansa"] = kdisp["success_probability"].apply(pct)
+    kdisp["Contest."] = kdisp["contestability"].apply(lambda x: f"{x:.2f}")
+    kdisp["CPI"] = kdisp["est_cpi_pln"].apply(pln)
+    st.dataframe(
+        kdisp[["term", "opportunity_score", "Szansa", "avg_rating_top",
+               "strong_incumbents", "mega_incumbents", "Contest.",
+               "est_installs_month", "CPI", "Werdykt"]]
+        .rename(columns={"term": "Mikro-nisza", "opportunity_score": "Opportunity",
+                         "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
+                         "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies."}),
+        use_container_width=True, hide_index=True,
+        column_config={"Opportunity": st.column_config.ProgressColumn(
+            "Opportunity", min_value=0, max_value=100, format="%.0f")},
+    )
+
+    st.markdown("#### Szczegóły mikro-niszy")
+    pick = st.selectbox("Wybierz", kdf["term"].tolist())
+    krow = kdf[kdf["term"] == pick].iloc[0]
+    lvl, css, expl = verdict(krow)
+    st.markdown(badge(lvl, css, expl), unsafe_allow_html=True)
+    d1, d2, d3, d4 = st.columns(4)
+    d1.metric("Opportunity", f"{krow['opportunity_score']:.0f}/100")
+    d2.metric("Popyt (mediana ocen)", num(krow["median_rating_count"]))
+    d3.metric("Luka jakości", f"{krow['quality_gap']:.2f}")
+    d4.metric("Contestability", f"{krow['contestability']:.2f}")
+    apps = krow.get("top_apps") or []
+    if apps:
+        st.caption("Aplikacje konkurujące o to zapytanie:")
+        st.dataframe(pd.DataFrame(apps).rename(columns={
+            "name": "Aplikacja", "developer": "Wydawca",
+            "rating": "Ocena", "ratings": "Liczba ocen"}),
+            use_container_width=True, hide_index=True)
+    st.stop()
+
 
 if not has_any_data():
     st.markdown('<div class="mi-hero"><h1>Brak danych</h1>'
