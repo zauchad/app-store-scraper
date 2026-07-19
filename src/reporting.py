@@ -100,6 +100,82 @@ def has_any_data() -> bool:
         return session.query(CategoryScore).first() is not None
 
 
+def category_rating_history(genre_id: int, limit: int = 60) -> pd.DataFrame:
+    """Time series of the category's avg incumbent rating (quality over time).
+
+    Falling line = incumbents getting worse = a FRESH quality gap opening up.
+    Built straight from stored CategoryScore rows - no extra data needed.
+    """
+    with session_scope() as session:
+        rows = session.execute(
+            select(CategoryScore.computed_at, CategoryScore.avg_rating_top)
+            .where(CategoryScore.genre_id == genre_id)
+            .order_by(CategoryScore.computed_at.asc())
+            .limit(limit)
+        ).all()
+    df = pd.DataFrame(
+        [{"date": r[0], "avg_rating": r[1]} for r in rows if r[1] is not None]
+    )
+    return df
+
+
+def quality_movers_df(limit: int = 15, min_drop: float = 0.05) -> pd.DataFrame:
+    """Apps whose rating DROPPED most vs the prior run (fresh openings).
+
+    A sizeable app whose rating is sliding = users turning sour = an opening for
+    a better product. Needs >=2 runs of history.
+    """
+    from src.db.models import AppSnapshot
+
+    with session_scope() as session:
+        snaps = session.execute(
+            select(
+                AppSnapshot.app_id,
+                AppSnapshot.rating_avg,
+                AppSnapshot.rating_count,
+                AppSnapshot.captured_at,
+                App.name,
+                App.developer,
+                Category.name.label("category"),
+            )
+            .join(App, App.id == AppSnapshot.app_id)
+            .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
+        ).all()
+
+    per_app: Dict[int, list] = {}
+    for row in snaps:
+        per_app.setdefault(row.app_id, [])
+        if len(per_app[row.app_id]) < 2:
+            per_app[row.app_id].append(row)
+
+    records: List[Dict] = []
+    for rows in per_app.values():
+        if len(rows) < 2:
+            continue
+        cur, prev = rows[0], rows[1]
+        if cur.rating_avg is None or prev.rating_avg is None:
+            continue
+        drop = round(prev.rating_avg - cur.rating_avg, 3)
+        if drop < min_drop:
+            continue
+        records.append(
+            {
+                "name": cur.name,
+                "developer": cur.developer,
+                "category": cur.category,
+                "rating_now": round(cur.rating_avg, 2),
+                "rating_prev": round(prev.rating_avg, 2),
+                "rating_drop": drop,
+                "rating_count": cur.rating_count,
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("rating_drop", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
 def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
     """Breakout detection: apps whose chart rank improved most vs the prior run.
 

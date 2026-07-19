@@ -10,6 +10,7 @@ from typing import List, Optional
 from sqlalchemy import select
 
 from src.analysis.insights import generate_insight_for_category
+from src.analysis.llm import is_quota_exhausted
 from src.analysis.opportunity import ScoredCategory
 from src.config import settings
 from src.db.models import CategoryScore
@@ -45,6 +46,9 @@ def run_deep_dive(
 
     produced = 0
     for genre_id in targets:
+        if is_quota_exhausted():
+            logger.warning("LLM daily quota exhausted - stopping deep dive early.")
+            break
         try:
             insight = generate_insight_for_category(genre_id)
             if insight is not None:

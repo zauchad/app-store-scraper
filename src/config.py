@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     llm_provider: str = "gemini"
+    # Min seconds between LLM calls (respect per-minute rate limits, ~15 RPM).
+    llm_min_interval_seconds: float = 4.0
+    # Retries for transient (per-minute) 429s before giving up on a call.
+    llm_max_retries: int = 3
 
     # --- Scraper ---
     store_country: str = "us"

@@ -88,6 +88,26 @@ z danych, które już przepływają przez system (zero płatnych zapytań):
   apek już rankujących (autorytet = wolumen ocen + twierdze). W parze z
   search-interest daje kwadrant AppTweak: **wysoki popyt + niska trudność = sweet
   spot**. Kolumny *Popyt wysz.* i *Trudność* w *Micro-Niche Explorer*.
+- **Heurystyczne pasma instalacji/przychodów** — z liczby ocen szacujemy *rząd
+  wielkości* instalacji (lifetime: `oceny / 1–3%`), pokazywany jako szerokie
+  pasmo z etykietą `≈ … (heur.)`. To NIE są zmierzone pobrania (te wymagają
+  paneli), ale do rankingu/filtrowania („hobby na 5k vs biznes na 500k")
+  oddają ~80% wartości Sensor Tower. Przychód liczymy tylko dla apek płatnych
+  (cena × instalacje); dla freemium/IAP uczciwie zostawiamy puste.
+- **Trend jakości + spadki ocen** — z historii `avg_rating_top` rysujemy, czy
+  jakość konkurencji rośnie czy spada (spadek = świeża luka). Sekcja
+  *Spadki jakości* w *Opportunity Radar* wskazuje apki z osuwającą się oceną
+  (użytkownicy niezadowoleni = okno na lepszy produkt). Wymaga ≥2 skanów.
+
+### Limity darmowego LLM (Gemini)
+
+`gemini-2.5-flash` w darmowym tierze ma **~20 zapytań/dzień**. Pełny `all` zużywa
+~10 wywołań (deep-dive + discover), więc **drugi przebieg tego samego dnia
+skończy się błędem 429**. Zabezpieczenia w kodzie: throttling (`LLM_MIN_INTERVAL_
+SECONDS`), retry na przejściowe 429 (`LLM_MAX_RETRIES`) oraz *circuit breaker* —
+po wyczerpaniu limitu dziennego pipeline przerywa zamiast młócić API. Zalecenia:
+uruchamiaj `deep-dive`/`discover` **max raz dziennie**, albo ustaw wyżej-limitowy
+model (`GEMINI_MODEL`), albo włącz płatny plan.
 
 ## Architektura
 

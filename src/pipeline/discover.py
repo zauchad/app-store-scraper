@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from src.analysis.microniche import analyze_terms
 from src.analysis.keywords import generate_keywords
+from src.analysis.llm import is_quota_exhausted
 from src.config import settings
 from src.db.models import Category, CategoryScore
 from src.db.session import session_scope
@@ -75,6 +76,9 @@ def run_discovery(
     logger.info("=== Auto-discovery on %d categories ===", len(targets))
     total = 0
     for genre_id, name in targets:
+        if is_quota_exhausted():
+            logger.warning("LLM daily quota exhausted - stopping discovery early.")
+            break
         terms = generate_keywords(name, n=n, genre_id=genre_id)
         if not terms:
             continue

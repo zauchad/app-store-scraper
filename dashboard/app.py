@@ -32,13 +32,16 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
+from src.analysis.estimates import lifetime_installs, paid_revenue_band  # noqa: E402
 from src.config import settings  # noqa: E402
 from src.db.session import init_db  # noqa: E402
 from src.reporting import (  # noqa: E402
+    category_rating_history,
     has_any_data,
     latest_insight,
     latest_keyword_scores_df,
     latest_scores_df,
+    quality_movers_df,
     rising_apps_df,
     top_apps_for_category,
 )
@@ -115,6 +118,13 @@ def pct(x) -> str:
 def num(x) -> str:
     try:
         return f"{int(x):,}".replace(",", " ")
+    except (TypeError, ValueError):
+        return "-"
+
+
+def installs_label(rating_count) -> str:
+    try:
+        return lifetime_installs(int(rating_count)).label
     except (TypeError, ValueError):
         return "-"
 
@@ -243,14 +253,15 @@ if view == "Micro-Niche Explorer":
         lambda x: f"{x:.2f}" if pd.notna(x) else "-")
     kdisp["Trudność"] = kdisp.get("difficulty", pd.Series(dtype=float)).apply(
         lambda x: f"{x:.2f}" if pd.notna(x) else "-")
+    kdisp["Instalacje (life.)"] = kdisp["median_rating_count"].apply(installs_label)
     kdisp["CPI"] = kdisp["est_cpi_pln"].apply(pln)
     st.dataframe(
         kdisp[["term", "opportunity_score", "Szansa", "Popyt wysz.", "Trudność",
-               "avg_rating_top", "strong_incumbents", "mega_incumbents", "Contest.",
-               "est_installs_month", "CPI", "Werdykt"]]
+               "avg_rating_top", "Instalacje (life.)", "strong_incumbents",
+               "mega_incumbents", "Contest.", "est_installs_month", "CPI", "Werdykt"]]
         .rename(columns={"term": "Mikro-nisza", "opportunity_score": "Opportunity",
                          "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
-                         "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies."}),
+                         "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies. (budżet)"}),
         use_container_width=True, hide_index=True,
         column_config={"Opportunity": st.column_config.ProgressColumn(
             "Opportunity", min_value=0, max_value=100, format="%.0f")},
@@ -274,8 +285,12 @@ if view == "Micro-Niche Explorer":
     d6.metric("Contestability", f"{krow['contestability']:.2f}")
     apps = krow.get("top_apps") or []
     if apps:
-        st.caption("Aplikacje konkurujące o to zapytanie:")
-        st.dataframe(pd.DataFrame(apps).rename(columns={
+        st.caption("Aplikacje konkurujące o to zapytanie "
+                   "(instalacje = heurystyka rzędu wielkości z liczby ocen):")
+        adf = pd.DataFrame(apps)
+        if "ratings" in adf.columns:
+            adf["Instalacje (life.)"] = adf["ratings"].apply(installs_label)
+        st.dataframe(adf.rename(columns={
             "name": "Aplikacja", "developer": "Wydawca",
             "rating": "Ocena", "ratings": "Liczba ocen"}),
             use_container_width=True, hide_index=True)
@@ -360,13 +375,14 @@ if view == "Opportunity Radar":
     disp["Szansa"] = disp["success_probability"].apply(pct)
     disp["CPI"] = disp["est_cpi_pln"].apply(pln)
     disp["Contest."] = disp["contestability"].apply(lambda x: f"{x:.2f}")
+    disp["Skala (life.)"] = disp["median_rating_count"].apply(installs_label)
     st.dataframe(
         disp[["category", "opportunity_score", "Szansa", "avg_rating_top",
-              "strong_incumbents", "mega_incumbents", "Contest.",
+              "Skala (life.)", "strong_incumbents", "mega_incumbents", "Contest.",
               "est_installs_month", "CPI", "Werdykt"]]
         .rename(columns={"category": "Kategoria", "opportunity_score": "Opportunity",
                          "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
-                         "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies."}),
+                         "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies. (budżet)"}),
         use_container_width=True, hide_index=True,
         column_config={
             "Opportunity": st.column_config.ProgressColumn(
@@ -389,6 +405,19 @@ if view == "Opportunity Radar":
             "rank_now": "Pozycja teraz", "rank_prev": "Poprzednio",
             "rank_delta": "Skok (↑)", "rating_count": "Liczba ocen"})
         st.dataframe(rdisp, use_container_width=True, hide_index=True)
+
+    st.markdown("#### 📉 Spadki jakości — świeże luki")
+    st.caption("Silne apki, których średnia ocena spada między skanami = "
+               "użytkownicy niezadowoleni = okno na lepszy produkt. Wymaga ≥2 dni historii.")
+    movers = quality_movers_df(limit=15)
+    if movers.empty:
+        st.info("Brak wykrytych spadków ocen (potrzebne min. 2 skany).")
+    else:
+        mdisp = movers.rename(columns={
+            "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
+            "rating_now": "Ocena teraz", "rating_prev": "Poprzednio",
+            "rating_drop": "Spadek (★)", "rating_count": "Liczba ocen"})
+        st.dataframe(mdisp, use_container_width=True, hide_index=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -439,6 +468,11 @@ else:
                    f"**{int(days_upd)} dni**. Rank momentum: "
                    f"**{row.get('rank_momentum', 0):+.2f}** (dodatni = apki pną się w górę).")
 
+    typ_band = installs_label(row.get("median_rating_count"))
+    st.caption(f"📦 **Skala rynku (heurystyka):** typowa apka w tej niszy to "
+               f"**{typ_band}** instalacji (lifetime), szacowane rzędem wielkości "
+               f"z liczby ocen — do rankingu/filtrowania, nie do wyceny.")
+
     st.divider()
 
     left, right = st.columns([2, 3])
@@ -459,6 +493,23 @@ else:
         st.plotly_chart(figc, use_container_width=True)
         st.caption(f"Mnożnik contestability: **{row.get('contestability', 1):.2f}** "
                    "(1.0 = wolne pole, →0 = rynek gigantów).")
+
+        hist = category_rating_history(genre_id)
+        if len(hist) >= 2:
+            st.markdown("#### Trend jakości konkurencji")
+            figt = go.Figure(go.Scatter(
+                x=hist["date"], y=hist["avg_rating"], mode="lines+markers",
+                line=dict(color="#f59e0b")))
+            figt.update_layout(height=200, margin=dict(l=10, r=10, t=6, b=6),
+                               yaxis_title="Śr. ocena", paper_bgcolor="rgba(0,0,0,0)",
+                               plot_bgcolor="rgba(17,24,39,0.5)")
+            st.plotly_chart(figt, use_container_width=True)
+            delta = hist["avg_rating"].iloc[-1] - hist["avg_rating"].iloc[0]
+            arrow = "↓ spada (luka rośnie)" if delta < -0.01 else (
+                "↑ rośnie (luka się zamyka)" if delta > 0.01 else "→ stabilna")
+            st.caption(f"Zmiana od początku historii: **{delta:+.2f}★** — {arrow}.")
+        else:
+            st.caption("Trend jakości pojawi się po ≥2 skanach (historia ocen).")
 
     with right:
         st.markdown("#### Ekonomia wejścia (przy Twoim budżecie)")
