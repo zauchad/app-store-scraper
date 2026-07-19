@@ -126,11 +126,14 @@ codziennie od teraz:
 
 ### Limity darmowego LLM (Gemini)
 
-`gemini-2.5-flash` w darmowym tierze ma **~20 zapytań/dzień**. Pełny `all` zużywa
-~10 wywołań (deep-dive + discover), więc **drugi przebieg tego samego dnia
-skończy się błędem 429**. Zabezpieczenia w kodzie: throttling (`LLM_MIN_INTERVAL_
-SECONDS`), retry na przejściowe 429 (`LLM_MAX_RETRIES`) oraz *circuit breaker* —
-po wyczerpaniu limitu dziennego pipeline przerywa zamiast młócić API.
+Domyślny model to `gemini-flash-latest` (alias zawsze wskazujący aktualny model
+Flash). **Uwaga:** stary `gemini-2.5-flash` zwraca dla nowych projektów API błąd
+`404 „no longer available to new users"` — dlatego używamy aliasu. Darmowy tier
+Flasha ma dzienny limit, więc pełny `all` uruchomiony **dwa razy tego samego dnia
+może trafić na 429**. Zabezpieczenia w kodzie: throttling (`LLM_MIN_INTERVAL_
+SECONDS`), retry na przejściowe 429 (`LLM_MAX_RETRIES`), *circuit breaker* po
+wyczerpaniu limitu oraz wyłączone „myślenie" (thinking_budget=0) dla stabilnego
+JSON.
 
 **Pula kluczy (zwielokrotnienie limitu).** Ustaw `GEMINI_API_KEYS` na kilka kluczy
 po przecinku — gdy jeden wyczerpie dzienny limit (429 PerDay), aplikacja
@@ -140,7 +143,8 @@ dopiero, gdy padną wszystkie. (Uwaga: mnożenie projektów wyłącznie dla obej
 limitów bywa w szarej strefie ToS Google — na własną odpowiedzialność.)
 
 Inne opcje: uruchamiaj `deep-dive`/`discover` **max raz dziennie**, ustaw
-wyżej-limitowy model (`GEMINI_MODEL`), albo włącz płatny plan.
+wyżej-limitowy/szybszy model (`GEMINI_MODEL`, np. `gemini-flash-lite-latest`),
+albo włącz płatny plan.
 
 ## Architektura
 

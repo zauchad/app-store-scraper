@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     # one key is hit (429 PerDay), we rotate to the next -> multiplies daily
     # capacity. Keys from DIFFERENT Google Cloud projects have independent quotas.
     gemini_api_keys: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    # "gemini-2.5-flash" is no longer available to NEW API projects (404). Use the
+    # forward-compatible alias that always points to the current flash model.
+    gemini_model: str = "gemini-flash-latest"
     llm_provider: str = "gemini"
     # Min seconds between LLM calls (respect per-minute rate limits, ~15 RPM).
     llm_min_interval_seconds: float = 4.0
