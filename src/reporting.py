@@ -5,6 +5,7 @@ queries are reusable/testable.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -12,6 +13,7 @@ from sqlalchemy import select
 
 from src.db.models import (
     App,
+    AppSnapshot,
     Category,
     CategoryInsight,
     CategoryScore,
@@ -92,6 +94,60 @@ def top_apps_for_category(genre_id: int, limit: int = 15) -> pd.DataFrame:
             for a in apps
         ]
     df = pd.DataFrame(records)
+    return df.head(limit)
+
+
+def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
+    """Rich competitor list for a category: latest rating/count + url + staleness.
+
+    Feeds both the "competitors" table (with clickable App Store links) and the
+    clone-and-improve candidate ranking. Uses each app's most recent snapshot for
+    rating/count and its stored update cadence for days-since-update.
+    """
+    now = datetime.utcnow()
+    with session_scope() as session:
+        apps = session.execute(
+            select(App).where(App.genre_id == genre_id).limit(300)
+        ).scalars().all()
+        app_by_id = {a.id: a for a in apps}
+
+        # One query for all snapshots of these apps; keep the latest per app.
+        latest: Dict[int, tuple] = {}
+        if app_by_id:
+            snaps = session.execute(
+                select(
+                    AppSnapshot.app_id,
+                    AppSnapshot.rating_avg,
+                    AppSnapshot.rating_count,
+                )
+                .where(AppSnapshot.app_id.in_(list(app_by_id)))
+                .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
+            ).all()
+            for s in snaps:
+                if s.app_id not in latest:  # first seen = newest (desc order)
+                    latest[s.app_id] = (s.rating_avg, s.rating_count)
+
+        records: List[Dict] = []
+        for a in apps:
+            rating, ratings = latest.get(a.id, (None, None))
+            days = None
+            if a.current_version_release_date is not None:
+                days = (now - a.current_version_release_date).days
+            records.append(
+                {
+                    "app_id": a.id,
+                    "name": a.name,
+                    "developer": a.developer,
+                    "rating": rating,
+                    "ratings": int(ratings) if ratings else 0,
+                    "price": a.price,
+                    "url": a.url or (f"https://apps.apple.com/app/id{a.id}"),
+                    "days_since_update": days,
+                }
+            )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("ratings", ascending=False).reset_index(drop=True)
     return df.head(limit)
 
 

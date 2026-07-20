@@ -185,6 +185,24 @@ streamlit run dashboard/app.py
 Bez klucza LLM Poziom 1 (heatmapa okazji + marketing) działa w pełni; Deep Dive
 pokaże instrukcję, jak go włączyć.
 
+### Dashboard (dla laika)
+
+Nawigacja to górny pasek „pigułek" (jak zwykły website), a nie sidebar-radio:
+
+- **📡 Radar okazji** — ranking nisz, mapa popyt×jakość, rekomendacja na start,
+  breakouty i spadki jakości.
+- **🔬 Głęboka analiza** — dla wybranej niszy: problemy użytkowników, brakujące
+  funkcje, trend jakości oraz **do 5 kandydatów „sklonuj i ulepsz"** (apki z
+  udowodnionym popytem, ale wykorzystywalną słabością — z linkiem do App Store i
+  konkretnym pomysłem „jak wygrać").
+- **🎯 Mikro-nisze** — **klikasz wiersz** w rankingu, żeby zobaczyć szczegóły
+  frazy + kandydatów do ulepszenia.
+- **📈 Co się zmieniło** — cotygodniowy digest.
+
+Dodatkowo: każda sekcja ma przycisk **„ℹ️ Na jakich danych?"** otwierający modal
+ze źródłem i wzorem każdego wskaźnika (pełna transparentność), wszystkie apki są
+podlinkowane do App Store, a w sidebarze jest **słowniczek pojęć**.
+
 ## CLI
 
 ```bash

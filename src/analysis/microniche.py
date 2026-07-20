@@ -126,6 +126,9 @@ def score_keyword(
             "developer": a.developer,
             "rating": a.rating_avg,
             "ratings": a.rating_count or 0,
+            "app_id": a.app_id,
+            "url": a.url or (f"https://apps.apple.com/app/id{a.app_id}"),
+            "price": a.price,
         }
         for a in top[:10]
     ]
