@@ -62,7 +62,22 @@ init_db()
 st.markdown(
     """
     <style>
-      .block-container {padding-top: 1.4rem; max-width: 1280px;}
+      /* Hide Streamlit chrome that overlays / clips the custom top nav */
+      header[data-testid="stHeader"],
+      .stAppHeader,
+      div[data-testid="stDecoration"],
+      div[data-testid="stToolbar"],
+      div[data-testid="stStatusWidget"] {
+        display: none !important;
+        height: 0 !important;
+        visibility: hidden !important;
+      }
+      /* Reclaim the space the sticky header used to cover */
+      .stApp > header { display: none !important; }
+      .block-container {
+        padding-top: 1.2rem !important;
+        max-width: 1280px;
+      }
       /* Hero */
       .mi-hero {
         background: linear-gradient(135deg, #1e3a8a 0%, #4c1d95 100%);
@@ -101,8 +116,12 @@ st.markdown(
         font-size:.88rem;}
       .mi-cand-angle {background:#052e1a; border:1px solid #14532d; color:#bbf7d0;
         border-radius:10px; padding:8px 12px; font-size:.88rem; margin-top:6px;}
-      /* Pill nav polish */
-      div[data-testid="stPills"] {margin: 2px 0 6px;}
+      /* Custom top nav buttons */
+      div[data-testid="stHorizontalBlock"]:has(button[kind="primary"]),
+      div[data-testid="stHorizontalBlock"]:has(button[kind="secondary"]) {
+        gap: 0.4rem;
+        margin-bottom: 0.4rem;
+      }
       /* Tighten metric labels */
       div[data-testid="stMetricLabel"] p {font-size:.82rem; color:#94a3b8;}
     </style>
@@ -207,19 +226,46 @@ with st.sidebar.expander("🧭 Jak czytać ten panel?"):
 
 
 # --------------------------------------------------------------------------- #
-#  Top navigation (pill bar, website-like)
+#  Top navigation — 4 equal buttons (never clipped by Streamlit header)
 # --------------------------------------------------------------------------- #
-NAV = ["📡 Radar okazji", "🔬 Głęboka analiza", "🎯 Mikro-nisze", "📈 Co się zmieniło"]
-page = st.pills("Nawigacja", NAV, default=NAV[0], key="nav",
-                label_visibility="collapsed")
-if not page:
-    page = NAV[0]
+NAV = ["radar", "deep", "micro", "digest"]
+NAV_LABELS = {
+    "radar": "📡 Radar",
+    "deep": "🔬 Analiza",
+    "micro": "🎯 Mikro-nisze",
+    "digest": "📈 Zmiany",
+}
+_legacy = {
+    "📡 Radar okazji": "radar",
+    "🔬 Głęboka analiza": "deep",
+    "🎯 Mikro-nisze": "micro",
+    "📈 Co się zmieniło": "digest",
+}
+if st.session_state.get("nav") in _legacy:
+    st.session_state["nav"] = _legacy[st.session_state["nav"]]
+if "nav" not in st.session_state or st.session_state["nav"] not in NAV:
+    st.session_state["nav"] = NAV[0]
+
+nav_cols = st.columns(len(NAV), gap="small")
+for col, key in zip(nav_cols, NAV):
+    with col:
+        active = st.session_state["nav"] == key
+        if st.button(
+            NAV_LABELS[key],
+            key=f"nav_btn_{key}",
+            type="primary" if active else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["nav"] = key
+            st.rerun()
+
+page = st.session_state["nav"]
 
 
 # =========================================================================== #
 #  PAGE: Micro-Niche Explorer
 # =========================================================================== #
-if page == "🎯 Mikro-nisze":
+if page == "micro":
     hero("Mikro-nisze",
          "Poziom PONIŻEJ top-chartów. AI proponuje konkretne mikro-nisze (frazy), "
          "a Search API waliduje je tym samym guardrailem contestability. "
@@ -356,7 +402,7 @@ if page == "🎯 Mikro-nisze":
 # =========================================================================== #
 #  PAGE: Co się zmieniło
 # =========================================================================== #
-if page == "📈 Co się zmieniło":
+if page == "digest":
     hero("Co się zmieniło",
          "Cotygodniowy brief: rosnące nisze, najlepsze osiągalne okazje, nowe "
          "mikro-nisze, breakouty, spadki jakości i porzucone forty — w jednym miejscu.")
@@ -385,7 +431,7 @@ df = load_scores()
 # =========================================================================== #
 #  PAGE: Opportunity Radar
 # =========================================================================== #
-if page == "📡 Radar okazji":
+if page == "radar":
     hero("Radar okazji",
          "Automatyczny ranking nisz: duży <b>realny</b> popyt + słaba jakość "
          "konkurencji + niskie nasycenie — przefiltrowane przez to, czy lean "
