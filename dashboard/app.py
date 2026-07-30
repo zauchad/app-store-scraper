@@ -366,12 +366,42 @@ def page_deep() -> None:
 
     df = load_scores()
     names = df["category"].tolist()
-    choice = st.selectbox("Wybierz niszę", names, index=0)
+
+    # Annotate each option with its score + verdict so the user picks informed,
+    # instead of choosing a category name blind.
+    _emoji = {"STRONG": "🟢", "WATCH": "🟡", "SKIP": "🔴"}
+    _meta = {}
+    for _, r in df.iterrows():
+        lvl, _ = verdict(r)
+        _meta[r["category"]] = (r["opportunity_score"] or 0, lvl)
+
+    def _fmt(name: str) -> str:
+        opp, lvl = _meta.get(name, (0, "SKIP"))
+        return f"{_emoji.get(lvl, '⚪')} {name} — {opp:.0f}/100 · {lvl}"
+
+    choice = st.selectbox("Wybierz niszę", names, index=0, format_func=_fmt)
     row = df[df["category"] == choice].iloc[0]
     genre_id = int(row["genre_id"])
     level, expl = verdict(row)
 
     st.markdown(f"### {choice} &nbsp; {verdict_md(level, expl)}")
+
+    # Bridge the potential contradiction between the hard-metric verdict and the
+    # (often enthusiastic) qualitative AI analysis further down the page.
+    if level == "STRONG":
+        st.success("✅ **Werdykt STRONG.** Twarde metryki i szansa wejścia są po "
+                   "Twojej stronie — to realny cel przy Twoim budżecie. Poniżej "
+                   "znajdziesz konkretne słabości konkurencji do wykorzystania.")
+    elif level == "WATCH":
+        st.info("👀 **Werdykt WATCH.** Obiecujące, ale sygnał nie jest jeszcze "
+                "pewny — obserwuj momentum i potraktuj analizę poniżej jako "
+                "kierunek do przetestowania na węższej pod-niszy.")
+    else:  # SKIP
+        st.info("🔴 **Werdykt SKIP** opiera się na *twardych metrykach* całej "
+                "kategorii (popyt, nasycenie, budżet). To **nie** znaczy, że nie ma "
+                "tu okazji — analiza AI poniżej często wskazuje realne luki. "
+                "Potraktuj ją jako inspirację do **węższej, konkretnej pod-niszy**, "
+                "a nie do frontalnego ataku na całą kategorię.")
 
     mega = int(row.get("mega_incumbents", 0) or 0)
     if mega >= 2:
@@ -383,13 +413,24 @@ def page_deep() -> None:
         )
 
     m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("Opportunity", f"{row['opportunity_score']:.0f}/100")
-    m2.metric("Szansa sukcesu", pct(row["success_probability"]))
+    m1.metric("Opportunity", f"{row['opportunity_score']:.0f}/100",
+              help="0–100. ⬆️ wyżej = lepiej. Łączny wskaźnik atrakcyjności "
+                   "i zdobywalności niszy.")
+    m2.metric("Szansa sukcesu", pct(row["success_probability"]),
+              help="⬆️ wyżej = lepiej. Szansa zdobycia przyczółka przy Twoim budżecie.")
     m3.metric("Śr. ocena konk.",
-              f"{row['avg_rating_top']:.2f}" if row["avg_rating_top"] else "-")
-    m4.metric("Twierdze", num(row["strong_incumbents"]))
-    m5.metric("Giganci (>3M)", num(row.get("mega_incumbents", 0)))
-    m6.metric("Contestability", f"{row.get('contestability', 1):.2f}")
+              f"{row['avg_rating_top']:.2f}" if row["avg_rating_top"] else "-",
+              help="Średnia ocena konkurentów. ⬇️ NIŻEJ = lepiej dla Ciebie "
+                   "(słaba konkurencja = łatwiej ją pobić jakością).")
+    m4.metric("Twierdze", num(row["strong_incumbents"]),
+              help="Silni, okopani gracze (dużo ocen + wysoka ocena). "
+                   "⬇️ NIŻEJ = lepiej.")
+    m5.metric("Giganci (>3M)", num(row.get("mega_incumbents", 0)),
+              help="Apki z >3 mln ocen — praktycznie nie do pobicia. "
+                   "2+ = automatyczny SKIP. ⬇️ NIŻEJ = lepiej.")
+    m6.metric("Contestability", f"{row.get('contestability', 1):.2f}",
+              help="0–1. Czy lean founder ma realną szansę wejść. "
+                   "⬆️ WYŻEJ = lepiej.")
     ui.how_button(["opportunity_score", "success_probability", "quality_gap",
                    "strong_incumbents", "mega_incumbents", "contestability"],
                   key="dd_how_metrics")
@@ -515,6 +556,45 @@ def page_deep() -> None:
                   if not comp_df.empty else [])
     ui.render_candidates(candidates, missing_features=missing_features)
     ui.how_button(["candidates"], key="dd_how_cand")
+
+    # ---- Action plan: turn all the analysis above into concrete next steps ---
+    st.divider()
+    with st.container(border=True):
+        st.markdown("#### ✅ Co zrobić dalej? (plan działania)")
+        steps: list[str] = []
+        if candidates:
+            c0 = candidates[0]
+            steps.append(
+                f"**1. Wybierz wzorzec do pobicia:** zacznij od **{c0.name}** "
+                f"(beatability {c0.beatability:.0f}/100) — udowodniony popyt "
+                f"i wykorzystywalna słabość."
+            )
+        feats = [f.get("label", "") for f in (missing_features or []) if f.get("label")]
+        if feats:
+            steps.append(
+                "**2. Zbuduj przewagę:** zaadresuj brakujące funkcje: "
+                f"**{', '.join(feats[:3])}**."
+            )
+        elif insight and (insight.pain_points or []):
+            top_pain = (insight.pain_points or [])[0].get("label", "")
+            if top_pain:
+                steps.append(f"**2. Zbuduj przewagę:** rozwiąż główny ból "
+                             f"użytkowników: **{top_pain}**.")
+        steps.append(
+            "**3. Zawęź pozycjonowanie:** wejdź w konkretną pod-niszę "
+            "(patrz zakładka **Mikro-nisze**), zamiast atakować całą kategorię."
+        )
+        steps.append(
+            f"**4. Sprawdź ekonomię:** przy budżecie "
+            f"{pln(row['marketing_cost_pln'])}/mies. i CPI {pln(row['est_cpi_pln'])} "
+            f"kupisz ok. **{num(row['est_installs_month'])} instalacji/mies.** — "
+            f"upewnij się, że to wystarczy na pierwszą trakcję."
+        )
+        for s in steps:
+            st.markdown(f"- {s}")
+        if level == "SKIP":
+            st.caption("⚠️ Pamiętaj: werdykt tej kategorii to SKIP. Powyższy plan "
+                       "ma sens tylko dla **wąskiej pod-niszy**, nie dla całego rynku.")
 
     with st.expander("Wszyscy konkurenci w tej niszy (z linkami do App Store)"):
         if comp_df.empty:
