@@ -2,17 +2,17 @@
 
 Kept separate from app.py so the page files stay readable and the "explain how a
 number is computed" content lives in one auditable place. Everything here is
-presentation only - no DB or scoring logic.
+presentation only - no DB or scoring logic. Rendering leans on native Streamlit
+components (containers, popovers, badges) for maximum readability and robustness.
 """
 from __future__ import annotations
 
-import html
 from typing import List, Optional
 
 import streamlit as st
 
 # --------------------------------------------------------------------------- #
-#  Methodology - the "on what data is this computed?" modal content.
+#  Methodology - the "on what data is this computed?" content.
 #  Each entry: key -> (human title, markdown explaining SOURCE + FORMULA).
 # --------------------------------------------------------------------------- #
 METHODOLOGY = {
@@ -156,68 +156,68 @@ METHODOLOGY = {
 }
 
 
-@st.dialog("Na jakich danych to policzono?", width="large")
-def _methodology_modal(keys: List[str]) -> None:
-    st.caption("Pełna transparentność — źródła i wzory każdego wskaźnika w tej sekcji.")
-    for k in keys:
-        entry = METHODOLOGY.get(k)
-        if not entry:
-            continue
-        title, body = entry
-        st.markdown(f"#### {title}")
-        st.markdown(body)
-        st.divider()
-    st.caption("Wszystkie dane pochodzą z darmowych, publicznych endpointów Apple. "
-               "Płatne panele (Sensor Tower / data.ai) dają dokładniejsze pobrania, "
-               "ale nie są potrzebne do rankingu okazji.")
-
-
-def how_button(keys: List[str], *, key: str, label: str = "ℹ️ Na jakich danych?") -> None:
-    """Small button that opens a methodology modal for the given metric keys."""
-    if st.button(label, key=key, help="Zobacz źródła danych i wzory"):
-        _methodology_modal(keys)
+def how_button(keys: List[str], *, key: str, label: str = "Na jakich danych?") -> None:
+    """Inline popover that explains the sources & formulas for the given metrics."""
+    with st.popover(f":material/info: {label}", use_container_width=False):
+        st.caption(
+            "Pełna transparentność — źródła i wzory każdego wskaźnika w tej sekcji."
+        )
+        for k in keys:
+            entry = METHODOLOGY.get(k)
+            if not entry:
+                continue
+            title, body = entry
+            st.markdown(f"**{title}**")
+            st.markdown(body)
+            st.divider()
+        st.caption(
+            "Wszystkie dane pochodzą z darmowych, publicznych endpointów Apple. "
+            "Płatne panele (Sensor Tower / data.ai) dają dokładniejsze pobrania, "
+            "ale nie są potrzebne do rankingu okazji."
+        )
 
 
 # --------------------------------------------------------------------------- #
-#  Clone-and-improve candidate cards
+#  Clone-and-improve candidate cards (native containers, no raw HTML)
 # --------------------------------------------------------------------------- #
 def render_candidates(candidates: List, missing_features: Optional[list] = None) -> None:
-    """Render up to 5 clone-and-improve candidate apps as rich cards."""
+    """Render up to 5 clone-and-improve candidate apps as native cards."""
     if not candidates:
-        st.info("Brak wyraźnych kandydatów (za mało apek z udowodnionym popytem "
-                "w tej niszy). Spróbuj szerszej kategorii lub innej frazy.")
+        st.info(
+            "Brak wyraźnych kandydatów (za mało apek z udowodnionym popytem "
+            "w tej niszy). Spróbuj szerszej kategorii lub innej frazy."
+        )
         return
 
     for i, c in enumerate(candidates, start=1):
-        rating_txt = f"{c.rating:.2f}★" if c.rating is not None else "b/d"
-        ratings_txt = f"{c.ratings:,}".replace(",", " ")
-        name = html.escape(c.name or "—")
-        dev = html.escape(c.developer or "—")
-        url = html.escape(c.url, quote=True) if c.url else ""
-        link = f'<a href="{url}" target="_blank">otwórz w App Store ↗</a>' if url else ""
-        reasons_html = "".join(f"<li>{html.escape(r)}</li>" for r in c.reasons)
-        angle = html.escape(c.angle)
-        st.markdown(
-            f"""
-            <div class="mi-cand">
-              <div class="mi-cand-head">
-                <span class="mi-cand-rank">#{i}</span>
-                <span class="mi-cand-name">{name}</span>
-                <span class="mi-cand-score">beatability {c.beatability:.0f}/100</span>
-              </div>
-              <div class="mi-cand-meta">{dev} · {rating_txt} · {ratings_txt} ocen · {link}</div>
-              <ul class="mi-cand-reasons">{reasons_html}</ul>
-              <div class="mi-cand-angle">🎯 <b>Jak wygrać:</b> {angle}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        with st.container(border=True):
+            head, score = st.columns([0.72, 0.28], vertical_alignment="center")
+            with head:
+                st.markdown(f"**#{i} · {c.name or '—'}**")
+                rating_txt = f"{c.rating:.2f}★" if c.rating is not None else "b/d"
+                ratings_txt = f"{c.ratings:,}".replace(",", " ")
+                meta = f"{c.developer or '—'} · {rating_txt} · {ratings_txt} ocen"
+                st.caption(meta)
+            with score:
+                st.markdown(
+                    f":violet-background[**beatability {c.beatability:.0f}/100**]"
+                )
+                if c.url:
+                    st.markdown(f"[App Store ↗]({c.url})")
+
+            for r in c.reasons:
+                st.markdown(f"- {r}")
+            st.success(f"🎯 **Jak wygrać:** {c.angle}")
 
     if missing_features:
-        feats = ", ".join(f.get("label", "") for f in missing_features[:5] if f.get("label"))
+        feats = ", ".join(
+            f.get("label", "") for f in missing_features[:5] if f.get("label")
+        )
         if feats:
-            st.caption(f"💡 Dodatkowo, brakujące funkcje w tej niszy (z analizy recenzji): "
-                       f"**{feats}** — to gotowa lista przewag konkurencyjnych.")
+            st.caption(
+                "💡 Dodatkowo, brakujące funkcje w tej niszy (z analizy recenzji): "
+                f"**{feats}** — to gotowa lista przewag konkurencyjnych."
+            )
 
 
 # --------------------------------------------------------------------------- #

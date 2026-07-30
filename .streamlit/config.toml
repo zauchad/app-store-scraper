@@ -5,6 +5,14 @@ headless = true
 [browser]
 gatherUsageStats = false
 
+# Modern, high-contrast dark theme. All colors chosen for AA-readable contrast.
 [theme]
 base = "dark"
-primaryColor = "#4C8BF5"
+primaryColor = "#7C5CFC"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#171C29"
+textColor = "#E7EAF3"
+linkColor = "#9B8CFF"
+borderColor = "#2A3145"
+font = "sans-serif"
+baseFontSize = 15
