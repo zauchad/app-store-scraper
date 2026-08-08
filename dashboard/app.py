@@ -221,6 +221,11 @@ def render_sidebar() -> None:
         else:
             st.warning("LLM OFF — brak GEMINI_API_KEY.", icon=":material/warning:")
 
+        vol = settings.volume_provider.lower()
+        st.caption(f"Popyt wyszukiwań: **{'Apple Ads (oficjalny)' if vol == 'asa' else 'proxy autocomplete (darmowy)'}**")
+        from src.scraper.reddit_demand import is_configured as _reddit_ok
+        st.caption(f"Reddit demand: **{'aktywny' if _reddit_ok() else 'OFF (darmowa konfiguracja w .env)'}**")
+
         st.divider()
         with st.expander("📖 Słowniczek pojęć"):
             ui.render_glossary()
@@ -1095,6 +1100,45 @@ def page_micro() -> None:
                    f"{easiest['fortresses']} twierdz). Ta sama apka, "
                    f"zlokalizowana, może wejść tam najtaniej.")
         ui.how_button(["geo_scan"], key=f"kw_how_geo_{picked}")
+
+    # Upstream demand: people asking for this app on Reddit BEFORE it exists.
+    st.markdown("##### 🗣️ Popyt na Reddicie — „szukam apki do…\"")
+    from src.scraper.reddit_demand import is_configured as reddit_configured
+    if not reddit_configured():
+        st.caption("Ludzie proszą o apki na Reddicie, zanim nisza pojawi się "
+                   "w danych App Store. Włącz ten sygnał **za darmo**: utwórz "
+                   "aplikację typu *script* na reddit.com/prefs/apps i ustaw "
+                   "`REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` w `.env`.")
+    else:
+        if st.button("Szukaj postów „is there an app for…\"",
+                     key=f"reddit_{picked}"):
+            from src.scraper.reddit_demand import demand_scan
+            with st.spinner("Przeszukuję Reddita (4 zapytania)…"):
+                st.session_state[f"reddit_res_{picked}"] = demand_scan(picked)
+        rres = st.session_state.get(f"reddit_res_{picked}")
+        if rres is not None:
+            if rres.error:
+                st.warning("Reddit nie odpowiedział (limit/blokada) — spróbuj "
+                           "za chwilę.")
+            elif rres.total_matches == 0:
+                st.info("Zero postów z prośbą o taką apkę — słaby popyt "
+                        "oddolny albo zbyt wąska fraza.")
+            else:
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Postów „szukam apki\"", rres.total_matches)
+                r2.metric("W ostatnich 12 mies.", rres.recent_12mo,
+                          help="⬆️ dużo świeżych próśb = popyt rośnie TERAZ.")
+                r3.metric("Top subreddit",
+                          f"r/{rres.top_subreddits[0][0]}"
+                          if rres.top_subreddits else "—")
+                rdf = pd.DataFrame([
+                    {"Post": p.title, "Subreddit": f"r/{p.subreddit}",
+                     "Głosy": p.score, "Komentarze": p.num_comments,
+                     "Data": p.created.date().isoformat(), "url": p.url}
+                    for p in rres.posts[:15]
+                ])
+                app_link_table(rdf, {}, url_col="url")
+                ui.how_button(["reddit_demand"], key=f"kw_how_reddit_{picked}")
 
     apps = krow.get("top_apps") or []
     if apps:

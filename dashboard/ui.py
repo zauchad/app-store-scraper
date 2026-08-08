@@ -223,6 +223,26 @@ METHODOLOGY = {
         "propozycji AI, które trzeba dopiero zweryfikować).\n\n"
         "**Dane źródłowe:** endpoint MZSearchHints (autocomplete Apple).",
     ),
+    "reddit_demand": (
+        "Popyt na Reddicie (upstream)",
+        "**Co to jest:** posty w stylu „is there an app for…\", „looking for "
+        "an app…\" — ludzie proszą o aplikację, zanim nisza będzie widoczna "
+        "w danych App Store. Dużo świeżych postów = potwierdzony, rosnący "
+        "problem.\n\n"
+        "**Dane źródłowe:** oficjalne API Reddita (darmowa aplikacja typu "
+        "script, 100 zapytań/min). Sygnał pomocniczy — nie wpływa na scoring.",
+    ),
+    "asa_popularity": (
+        "Apple Ads search popularity",
+        "**Co to jest:** oficjalny wskaźnik popularności wyszukiwań Apple "
+        "(5–100) — najdokładniejszy dostępny sygnał wolumenu w App Store.\n\n"
+        "**Koszt:** darmowe konto Apple Ads (bez wydawania na reklamy). Po "
+        "ustawieniu `VOLUME_PROVIDER=asa` zastępuje proxy autocomplete; przy "
+        "braku danych (Apple zwraca score tylko dla fraz ≥35) automatyczny "
+        "fallback do proxy.\n\n"
+        "**Uwaga:** od października 2025 Apple ukrywa score dla nisz o małym "
+        "wolumenie — brak wartości nie znaczy „zero popytu\".",
+    ),
     "niche_checklist": (
         "Checklist weryfikacji niszy (5 pytań)",
         "**Co to jest:** 5 pytań-testów przed wejściem w niszę: 1) czy problem "

@@ -18,3 +18,7 @@ google-genai>=1.0
 streamlit>=1.33
 plotly>=5.20
 pandas>=2.1
+
+# Optional - Apple Ads search-popularity provider (VOLUME_PROVIDER=asa):
+# PyJWT>=2.8
+# cryptography>=42

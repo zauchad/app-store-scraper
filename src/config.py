@@ -53,6 +53,24 @@ class Settings(BaseSettings):
     excluded_genre_ids: str = "6014"
     review_pages_per_app: int = 5
 
+    # --- Apple Ads (Search Ads) popularity provider - FREE, needs account ---
+    # Account Settings -> API in the Apple Ads UI: upload a public key, copy
+    # clientId / teamId / keyId. No ad spend required to query the API.
+    asa_client_id: str = ""
+    asa_team_id: str = ""
+    asa_key_id: str = ""
+    # PEM inline (with \n) or a path to the .pem file.
+    asa_private_key: str = ""
+    asa_org_id: str = ""
+    # Popularity endpoint template with {term} and {country} placeholders.
+    asa_popularity_url: str = ""
+    # Optional JSON body template -> switches the call to POST.
+    asa_popularity_body: str = ""
+
+    # --- Reddit demand mining (FREE: script app at reddit.com/prefs/apps) ---
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+
     # --- Review provider (MODE A fuel) ---
     # "rss"      -> free legacy feed (mostly empty in 2026, kept as fallback)
     # "rapidapi" -> hosted App Store reviews API (cheap, reliable, headless)

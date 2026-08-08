@@ -46,6 +46,21 @@ wyniki trafiają też do promptu LLM jako twarde statystyki całego korpusu.
 * **Geo-radar** — ta sama fraza porównana w US/GB/DE/FR/PL: gdzie konkurencja
   najsłabsza, tam zlokalizowana wersja apki wchodzi najtaniej.
 
+### Zewnętrzne sygnały popytu (opcjonalne, darmowe)
+
+* **Apple Ads search popularity (5–100)** — oficjalny wolumen wyszukiwań;
+  wymaga tylko **darmowego** konta Apple Ads (bez wydawania na reklamy).
+  Ustaw `VOLUME_PROVIDER=asa` + klucze `ASA_*` w `.env` (instrukcja w
+  `.env.example`). Od 10.2025 Apple zwraca score tylko dla fraz ≥35 —
+  poniżej automatyczny fallback do darmowego proxy autocomplete.
+* **Reddit demand mining** — posty „is there an app for…" to popyt widoczny
+  ZANIM pojawi się w App Store. Darmowa aplikacja *script* na
+  reddit.com/prefs/apps → `REDDIT_CLIENT_ID/SECRET`. Przycisk w Mikro-niszach.
+* **Sensor Tower / data.ai — celowo pominięte**: $2–10k+/rok, a do *rankingu*
+  nisz (nie wyceny firm) darmowe heurystyki wystarczają. Najtańsza realna
+  walidacja to i tak mała kampania Apple Search Ads (200–500 zł) na frazę
+  z Mikro-nisz — daje PRAWDZIWE CPI i konwersję.
+
 ### Eksport i raporty
 
 * Eksport CSV tabel (Radar, Mikro-nisze) oraz **jednoklikowy raport niszy
