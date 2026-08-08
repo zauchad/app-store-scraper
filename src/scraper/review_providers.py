@@ -72,6 +72,7 @@ class RssReviewProvider(ReviewProvider):
                 body=i.body,
                 rating=i.rating,
                 version=i.version,
+                review_date=i.updated,
             )
             for i in items
         ]
@@ -177,6 +178,12 @@ def _parse_generic_review(
     version = _first(raw, ["version", "appVersion", "app_version"])
     if isinstance(author, dict):
         author = author.get("name") or author.get("label")
+    date_raw = _first(raw, ["date", "updated", "reviewDate", "review_date", "createdAt"])
+    review_date = None
+    if date_raw:
+        from src.scraper.itunes_client import _parse_apple_date
+
+        review_date = _parse_apple_date(str(date_raw))
     return ReviewRecord(
         review_id=str(rid),
         author=str(author) if author else None,
@@ -184,6 +191,7 @@ def _parse_generic_review(
         body=str(body) if body else None,
         rating=rating,
         version=str(version) if version else None,
+        review_date=review_date,
     )
 
 

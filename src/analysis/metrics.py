@@ -30,15 +30,21 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.analysis.scoring import (
+    DECLINE_MIN_DELTA,
+    DECLINE_MIN_REVIEWS,
     FORTRESS_MIN_RATING,
     FORTRESS_MIN_REVIEWS,
     MEGA_MIN_REVIEWS,
     STALE_DAYS,
 )
-from src.db.models import AppSnapshot, Category
+from src.db.models import App, AppSnapshot, Category
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Snapshots older than this (vs the newest one in the category) no longer
+# describe the CURRENT competitive picture - the app fell off the chart.
+SNAPSHOT_FRESH_DAYS = 7
 
 
 @dataclass
@@ -55,18 +61,38 @@ class CategoryAggregate:
     median_days_since_update: Optional[int]
     raw_momentum: float  # signed avg review-count growth vs previous snapshot
     raw_rank_momentum: float  # avg rank improvement vs previous snapshot (up=+)
+    num_developers: Optional[int] = None  # distinct publishers in the top
+    top_dev_share: Optional[float] = None  # ratings share of biggest publisher
+    english_only_share: Optional[float] = None  # sizeable apps shipping EN-only
+    num_declining_incumbents: Optional[int] = None  # current version << lifetime
 
 
 def _latest_snapshot_per_app(
     session: Session, genre_id: int
 ) -> List[AppSnapshot]:
-    """Most recent snapshot for each app in a category."""
+    """Most recent snapshot for each app CURRENTLY charting in a category.
+
+    Freshness window: apps that fell off the chart weeks ago keep their old
+    snapshots, but they no longer describe today's competition - without the
+    cutoff `num_apps` inflates forever and aggregates mix data from many dates.
+    """
+    newest = session.execute(
+        select(func.max(AppSnapshot.captured_at)).where(
+            AppSnapshot.genre_id == genre_id
+        )
+    ).scalar()
+    if newest is None:
+        return []
+    cutoff = newest - timedelta(days=SNAPSHOT_FRESH_DAYS)
     subq = (
         select(
             AppSnapshot.app_id,
             func.max(AppSnapshot.captured_at).label("max_ts"),
         )
-        .where(AppSnapshot.genre_id == genre_id)
+        .where(
+            (AppSnapshot.genre_id == genre_id)
+            & (AppSnapshot.captured_at >= cutoff)
+        )
         .group_by(AppSnapshot.app_id)
         .subquery()
     )
@@ -139,6 +165,10 @@ def compute_category_aggregate(
     momentum = _review_velocity(latest, prev)
     rank_momentum = _rank_velocity(latest, prev)
 
+    num_devs, top_dev_share = _developer_concentration(session, latest)
+    english_only = _english_only_share(session, latest)
+    declining = _declining_incumbents(latest)
+
     return CategoryAggregate(
         genre_id=genre_id,
         name=name,
@@ -152,6 +182,77 @@ def compute_category_aggregate(
         median_days_since_update=median_days_update,
         raw_momentum=momentum,
         raw_rank_momentum=rank_momentum,
+        num_developers=num_devs,
+        top_dev_share=top_dev_share,
+        english_only_share=english_only,
+        num_declining_incumbents=declining,
+    )
+
+
+def _apps_for_snapshots(session: Session, latest: List[AppSnapshot]) -> List[App]:
+    ids = [s.app_id for s in latest]
+    if not ids:
+        return []
+    return list(session.execute(select(App).where(App.id.in_(ids))).scalars())
+
+
+def _developer_concentration(
+    session: Session, latest: List[AppSnapshot]
+) -> tuple:
+    """(distinct publishers, ratings share of the biggest publisher).
+
+    10 apps from 10 firms and 10 apps from 1 firm are radically different
+    niches: a single publisher owning the top usually means a portfolio play
+    that will out-ship any newcomer.
+    """
+    apps = _apps_for_snapshots(session, latest)
+    if not apps:
+        return None, None
+    counts_by_app = {s.app_id: (s.rating_count or 0) for s in latest}
+    by_dev: Dict[str, int] = {}
+    for a in apps:
+        key = str(a.artist_id) if a.artist_id else (a.developer or f"app-{a.id}")
+        by_dev[key] = by_dev.get(key, 0) + counts_by_app.get(a.id, 0)
+    total = sum(by_dev.values())
+    top_share = round(max(by_dev.values()) / total, 4) if total > 0 else None
+    return len(by_dev), top_share
+
+
+def _english_only_share(
+    session: Session, latest: List[AppSnapshot]
+) -> Optional[float]:
+    """Share of sizeable incumbents that ship in English only.
+
+    High share = the audience exists but nobody serves other languages ->
+    a localization opening (underserved user groups).
+    """
+    apps = _apps_for_snapshots(session, latest)
+    counts_by_app = {s.app_id: (s.rating_count or 0) for s in latest}
+    with_langs = [
+        a for a in apps
+        if a.language_codes and counts_by_app.get(a.id, 0) >= DECLINE_MIN_REVIEWS
+    ]
+    if not with_langs:
+        return None
+    en_only = sum(
+        1 for a in with_langs
+        if len(a.language_codes) == 1 and str(a.language_codes[0]).upper() == "EN"
+    )
+    return round(en_only / len(with_langs), 4)
+
+
+def _declining_incumbents(latest: List[AppSnapshot]) -> Optional[int]:
+    """Sizeable apps whose CURRENT version rates well below lifetime average."""
+    have_signal = [
+        s for s in latest
+        if s.rating_avg is not None and s.rating_avg_current is not None
+    ]
+    if not have_signal:
+        return None
+    return sum(
+        1 for s in have_signal
+        if (s.rating_count or 0) >= DECLINE_MIN_REVIEWS
+        and (s.rating_avg - s.rating_avg_current) >= DECLINE_MIN_DELTA
     )
 
 

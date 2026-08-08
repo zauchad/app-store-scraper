@@ -15,7 +15,10 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
+
+from sqlalchemy import select
 
 from src.analysis.marketing import MarketingEstimate, estimate
 from src.analysis.scoring import (
@@ -120,6 +123,7 @@ def score_keyword(
         num_apps=len(top),
     )
 
+    now = datetime.utcnow()
     top_apps = [
         {
             "name": a.name,
@@ -129,6 +133,12 @@ def score_keyword(
             "app_id": a.app_id,
             "url": a.url or (f"https://apps.apple.com/app/id{a.app_id}"),
             "price": a.price,
+            # Staleness feeds the clone-and-improve ranking ("abandoned fort").
+            "days_since_update": (
+                (now - a.current_version_release_date).days
+                if a.current_version_release_date
+                else None
+            ),
         }
         for a in top[:10]
     ]
@@ -165,7 +175,7 @@ def analyze_terms(
         term = term.strip()
         if not term:
             continue
-        apps = client.search(term, limit=50)
+        apps = client.search(term, limit=50, genre_id=genre_id)
         interest = volume.interest(term)
         res = score_keyword(term, apps, genre_id, search_interest=interest)
         if res is not None:
@@ -180,9 +190,17 @@ def analyze_terms(
 def _persist(results: List[KeywordResult], source: str) -> None:
     with session_scope() as session:
         for r in results:
-            kw = Keyword(term=r.term, genre_id=r.genre_id, source=source)
-            session.add(kw)
-            session.flush()
+            # Get-or-create so re-analysing the same term appends a new score
+            # to ONE keyword row instead of piling up duplicates.
+            kw = session.execute(
+                select(Keyword).where(Keyword.term == r.term).limit(1)
+            ).scalars().first()
+            if kw is None:
+                kw = Keyword(term=r.term, genre_id=r.genre_id, source=source)
+                session.add(kw)
+                session.flush()
+            elif r.genre_id is not None and kw.genre_id != r.genre_id:
+                kw.genre_id = r.genre_id
             session.add(
                 KeywordScore(
                     keyword_id=kw.id,

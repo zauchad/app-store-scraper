@@ -70,6 +70,20 @@ class App(Base):
     current_version_release_date: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
     )
+    # Publisher identity -> developer-concentration analysis (1 firm w/ 10 apps
+    # is a very different niche than 10 independent firms).
+    artist_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    # All genres the app ranks in -> cross-category positioning ("styk kategorii").
+    genre_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # Supported languages -> localization-gap analysis (English-only = opening).
+    language_codes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    screenshot_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ipad_screenshot_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    file_size_mb: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    minimum_os_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    content_rating: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    # What the incumbent just shipped (competitive feature velocity).
+    release_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     category: Mapped[Optional[Category]] = relationship(back_populates="apps")
     snapshots: Mapped[list["AppSnapshot"]] = relationship(back_populates="app")
@@ -93,6 +107,10 @@ class AppSnapshot(Base):
     rating_avg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rating_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     version: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Current-version rating vs lifetime: the freshest free "app is getting
+    # worse/better RIGHT NOW" signal, no history needed.
+    rating_avg_current: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    rating_count_current: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Update cadence at scan time -> lets us compute "days since last update".
     current_version_release_date: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
@@ -151,6 +169,17 @@ class CategoryScore(Base):
     # and the median days-since-update across the niche. Stale forts = openings.
     num_stale_incumbents: Mapped[int] = mapped_column(Integer, default=0)
     median_days_since_update: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    # Publisher concentration: distinct developers + share of ratings held by
+    # the single biggest publisher (near 1.0 = one firm owns the niche).
+    num_developers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    top_dev_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Localization gap: share of sizeable incumbents shipping English-only.
+    english_only_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # How many sizeable incumbents rate visibly worse on the CURRENT version
+    # than lifetime (users souring right now = fresh opening).
+    num_declining_incumbents: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
 

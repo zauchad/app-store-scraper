@@ -56,6 +56,10 @@ def latest_scores_df() -> pd.DataFrame:
                 "mega_incumbents": score.num_mega_incumbents,
                 "stale_incumbents": score.num_stale_incumbents,
                 "median_days_since_update": score.median_days_since_update,
+                "num_developers": score.num_developers,
+                "top_dev_share": score.top_dev_share,
+                "english_only_share": score.english_only_share,
+                "declining_incumbents": score.num_declining_incumbents,
                 "est_cpi_pln": score.est_cpi_pln,
                 "est_installs_month": score.est_installs_month,
                 "marketing_cost_pln": score.marketing_cost_pln,
@@ -312,10 +316,14 @@ def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
 
 
 def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
-    """Most recent score per keyword term (micro-niches), ranked."""
+    """Most recent score per keyword term (micro-niches), ranked.
+
+    Deduplicated BEFORE limiting, so re-analysing recent terms never pushes
+    older micro-niches out of the dashboard.
+    """
     with session_scope() as session:
         rows = session.execute(
-            select(KeywordScore).order_by(KeywordScore.computed_at.desc()).limit(limit)
+            select(KeywordScore).order_by(KeywordScore.computed_at.desc())
         ).scalars().all()
 
     seen = set()
@@ -324,6 +332,8 @@ def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
         key = s.term.lower()
         if key in seen:
             continue
+        if len(records) >= limit:
+            break
         seen.add(key)
         records.append(
             {
@@ -353,3 +363,160 @@ def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
     if not df.empty:
         df = df.sort_values("opportunity_score", ascending=False).reset_index(drop=True)
     return df
+
+
+def pain_mining_for_category(genre_id: int):
+    """LLM-free pain themes / phrases / most-hated apps for a category."""
+    from src.analysis.review_mining import mine_pains
+
+    return mine_pains(genre_id=genre_id)
+
+
+def pain_mining_for_apps(app_ids: List[int]):
+    """Same mining, scoped to an explicit competitor list (micro-niche)."""
+    from src.analysis.review_mining import mine_pains
+
+    return mine_pains(app_ids=app_ids)
+
+
+def developer_concentration_df(genre_id: int, limit: int = 10) -> pd.DataFrame:
+    """Who owns the niche: publishers ranked by their share of all ratings."""
+    from src.analysis.metrics import _latest_snapshot_per_app
+
+    with session_scope() as session:
+        latest = _latest_snapshot_per_app(session, genre_id)
+        ids = [s.app_id for s in latest]
+        apps = (
+            session.execute(select(App).where(App.id.in_(ids))).scalars().all()
+            if ids else []
+        )
+    counts = {s.app_id: (s.rating_count or 0) for s in latest}
+    by_dev: Dict[str, Dict] = {}
+    for a in apps:
+        key = a.developer or f"app-{a.id}"
+        d = by_dev.setdefault(key, {"developer": key, "apps": 0, "ratings": 0})
+        d["apps"] += 1
+        d["ratings"] += counts.get(a.id, 0)
+    total = sum(d["ratings"] for d in by_dev.values()) or 1
+    records = [
+        {**d, "share": round(d["ratings"] / total, 4)} for d in by_dev.values()
+    ]
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("ratings", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
+def declining_apps_df(genre_id: Optional[int] = None, limit: int = 15) -> pd.DataFrame:
+    """Apps whose CURRENT version rates well below their lifetime average.
+
+    The freshest free "users are souring right now" signal - visible after the
+    first scan that captures `averageUserRatingForCurrentVersion`.
+    """
+    from src.analysis.scoring import DECLINE_MIN_DELTA
+
+    with session_scope() as session:
+        stmt = (
+            select(
+                AppSnapshot.app_id,
+                AppSnapshot.rating_avg,
+                AppSnapshot.rating_avg_current,
+                AppSnapshot.rating_count,
+                AppSnapshot.captured_at,
+                App.name,
+                App.developer,
+                Category.name.label("category"),
+            )
+            .join(App, App.id == AppSnapshot.app_id)
+            .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .where(AppSnapshot.rating_avg_current.isnot(None))
+            .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
+        )
+        if genre_id is not None:
+            stmt = stmt.where(AppSnapshot.genre_id == genre_id)
+        snaps = session.execute(stmt).all()
+
+    seen = set()
+    records: List[Dict] = []
+    for row in snaps:
+        if row.app_id in seen:
+            continue
+        seen.add(row.app_id)
+        if row.rating_avg is None or row.rating_avg_current is None:
+            continue
+        delta = round(row.rating_avg - row.rating_avg_current, 2)
+        if delta < DECLINE_MIN_DELTA:
+            continue
+        records.append(
+            {
+                "name": row.name,
+                "developer": row.developer,
+                "category": row.category,
+                "rating_lifetime": round(row.rating_avg, 2),
+                "rating_current_version": round(row.rating_avg_current, 2),
+                "delta": delta,
+                "rating_count": row.rating_count,
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("delta", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
+def localization_gap_df(genre_id: int, limit: int = 20) -> pd.DataFrame:
+    """Sizeable incumbents and the languages they ship - EN-only = opening."""
+    from src.analysis.metrics import _latest_snapshot_per_app
+
+    with session_scope() as session:
+        latest = _latest_snapshot_per_app(session, genre_id)
+        ids = [s.app_id for s in latest]
+        apps = (
+            session.execute(select(App).where(App.id.in_(ids))).scalars().all()
+            if ids else []
+        )
+    counts = {s.app_id: (s.rating_count or 0) for s in latest}
+    records: List[Dict] = []
+    for a in apps:
+        if not a.language_codes:
+            continue
+        langs = [str(c).upper() for c in a.language_codes]
+        records.append(
+            {
+                "name": a.name,
+                "developer": a.developer,
+                "ratings": counts.get(a.id, 0),
+                "num_languages": len(langs),
+                "english_only": langs == ["EN"],
+                "languages": ", ".join(langs[:12]) + ("…" if len(langs) > 12 else ""),
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("ratings", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
+def recent_release_notes_df(genre_id: int, limit: int = 10) -> pd.DataFrame:
+    """What the competition shipped most recently (feature velocity radar)."""
+    with session_scope() as session:
+        apps = session.execute(
+            select(App)
+            .where(
+                (App.genre_id == genre_id)
+                & (App.release_notes.isnot(None))
+                & (App.current_version_release_date.isnot(None))
+            )
+            .order_by(App.current_version_release_date.desc())
+            .limit(limit)
+        ).scalars().all()
+        records = [
+            {
+                "name": a.name,
+                "developer": a.developer,
+                "updated": a.current_version_release_date,
+                "release_notes": (a.release_notes or "")[:500],
+            }
+            for a in apps
+        ]
+    return pd.DataFrame(records)

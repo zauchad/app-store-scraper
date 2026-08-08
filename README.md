@@ -19,6 +19,29 @@ POZIOM 2 (tylko TOP-K nisz, LLM)
   pain points, brakujące funkcje, sugerowany kierunek dla Twojej apki
 ```
 
+### Analizy bez LLM na pełnym korpusie recenzji
+
+Niezależnie od LLM, system mieli **wszystkie** zebrane recenzje (100k+) w
+deterministyczny pain-mining: leksykon tematów bólu (crashe, reklamy,
+subskrypcje, synchronizacja, logowanie…), najczęstsze frazy (bigramy) z
+negatywnych recenzji oraz ranking apek o najwyższym odsetku złych ocen.
+To systematyczna wersja zasady „przeczytaj min. 100 recenzji konkurenta" —
+wyniki trafiają też do promptu LLM jako twarde statystyki całego korpusu.
+
+### Sygnały strukturalne niszy (darmowe, z iTunes Lookup)
+
+* **Koncentracja wydawców** — czy niszę trzyma 10 firm, czy 1 firma z 10
+  apkami (`artistId`); udział największego wydawcy w ocenach.
+* **Luka lokalizacyjna** — odsetek dużych konkurentów wydających apkę tylko
+  po angielsku (`languageCodesISO2A`) = otwarcie na rynki językowe.
+* **Psujące się apki** — ocena bieżącej wersji vs lifetime
+  (`averageUserRatingForCurrentVersion`): użytkownicy odwracają się TERAZ,
+  bez czekania na historię skanów.
+* **Release notes konkurencji** — co i jak szybko konkurenci wydają.
+* **Checklist 5 pytań weryfikacji niszy** (dotkliwość problemu, przewaga,
+  monetyzacja, wzrost, unikalna przewaga) — auto-wypełniany danymi
+  w zakładce Analiza.
+
 Nie musisz ręcznie wskazywać kategorii — lista kategorii App Store jest skończona,
 więc system skanuje je **wszystkie automatycznie**. **Gry są domyślnie wykluczone**
 (kapitałochłonna produkcja) — zmienisz to w `.env`.

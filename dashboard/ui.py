@@ -144,6 +144,54 @@ METHODOLOGY = {
         "**Dane źródłowe:** oceny, liczby ocen i data ostatniej aktualizacji z iTunes "
         "Lookup / Search.",
     ),
+    "pain_mining": (
+        "Analiza recenzji (pełny korpus, bez AI)",
+        "**Co to jest:** systematyczna wersja rady „przeczytaj minimum 100 recenzji "
+        "każdego konkurenta\" — czytamy **wszystkie** zebrane recenzje (dziesiątki "
+        "tysięcy), nie próbkę.\n\n"
+        "**Wzór:** recenzje ≤3★ są dopasowywane do leksykonu tematów bólu "
+        "(crashe, reklamy, subskrypcje, synchronizacja…); do tego najczęstsze "
+        "frazy (bigramy) i apki z największym odsetkiem złych ocen.\n\n"
+        "**Dane źródłowe:** pełna tabela `reviews` zebrana ze skanów (RSS Apple).",
+    ),
+    "dev_concentration": (
+        "Koncentracja wydawców",
+        "**Co to jest:** czy niszę kontroluje 10 niezależnych firm, czy 1 firma "
+        "z 10 aplikacjami (portfolio play — dużo trudniejszy przeciwnik).\n\n"
+        "**Wzór:** udział największego wydawcy w łącznej liczbie ocen top-apek. "
+        "Blisko 1.0 = rynek jednej firmy.\n\n"
+        "**Dane źródłowe:** `artistName`/`artistId` z iTunes Lookup.",
+    ),
+    "localization_gap": (
+        "Luka lokalizacyjna",
+        "**Co to jest:** odsetek dużych konkurentów wydających apkę **tylko po "
+        "angielsku**. Wysoki = popyt istnieje, ale nikt nie obsługuje innych "
+        "języków — gotowa nisza „ta sama apka, ale po polsku/niemiecku/…\".\n\n"
+        "**Dane źródłowe:** `languageCodesISO2A` z iTunes Lookup.",
+    ),
+    "declining": (
+        "Psujące się apki (wersja bieżąca vs lifetime)",
+        "**Co to jest:** apki, których **bieżąca wersja** jest oceniana wyraźnie "
+        "gorzej niż średnia całego życia apki — użytkownicy właśnie się "
+        "odwracają. Najświeższy darmowy sygnał otwierającej się luki.\n\n"
+        "**Wzór:** `ocena lifetime − ocena bieżącej wersji ≥ 0.3★` przy ≥5 tys. "
+        "ocen.\n\n"
+        "**Dane źródłowe:** `averageUserRatingForCurrentVersion` z iTunes Lookup.",
+    ),
+    "release_notes": (
+        "Co konkurencja właśnie wydała",
+        "**Co to jest:** najnowsze release notes konkurentów — tempo rozwoju "
+        "i kierunek funkcji (czy dodają AI? czy tylko „bug fixes\"?).\n\n"
+        "**Dane źródłowe:** `releaseNotes` z iTunes Lookup.",
+    ),
+    "niche_checklist": (
+        "Checklist weryfikacji niszy (5 pytań)",
+        "**Co to jest:** 5 pytań-testów przed wejściem w niszę: 1) czy problem "
+        "jest dotkliwy, 2) czy możesz być znacząco lepszy, 3) czy nisza "
+        "monetyzuje, 4) czy rośnie, 5) czy masz unikalną przewagę.\n\n"
+        "Pytania 1–4 wypełniamy automatycznie danymi (pain-mining, luka "
+        "jakościowa, ceny/subskrypcje, wzrost). Pytanie 5 możesz ocenić tylko Ty.",
+    ),
     "verdict": (
         "Werdykt (STRONG / WATCH / SKIP)",
         "**Reguły:**\n"
@@ -233,6 +281,10 @@ GLOSSARY = [
     ("CPI", "Koszt jednej instalacji z reklam (per kategoria)."),
     ("Beatability", "Jak dobrze apka nadaje się jako wzorzec do ulepszenia."),
     ("Instalacje (heur.)", "Rząd wielkości pobrań z liczby ocen — nie pomiar."),
+    ("Pain-mining", "Automatyczna analiza WSZYSTKICH negatywnych recenzji (bez AI)."),
+    ("Koncentracja wydawców", "Czy niszę trzyma 1 firma (trudno) czy wiele (łatwiej)."),
+    ("Luka lokalizacyjna", "Duzi konkurenci tylko po angielsku = nisza językowa."),
+    ("Psująca się apka", "Bieżąca wersja oceniana dużo gorzej niż średnia lifetime."),
 ]
 
 

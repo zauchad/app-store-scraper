@@ -41,11 +41,17 @@ from src.reporting import (  # noqa: E402
     category_growth_df,
     category_rating_history,
     competitors_for_category,
+    declining_apps_df,
+    developer_concentration_df,
     has_any_data,
     latest_insight,
     latest_keyword_scores_df,
     latest_scores_df,
+    localization_gap_df,
+    pain_mining_for_apps,
+    pain_mining_for_category,
     quality_movers_df,
+    recent_release_notes_df,
     rising_apps_df,
 )
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
@@ -98,6 +104,17 @@ st.markdown(
 @st.cache_data(ttl=300)
 def load_scores() -> pd.DataFrame:
     return latest_scores_df()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_pain_mining(genre_id: int):
+    """Full-corpus review mining is heavy (100k+ rows) -> cache for an hour."""
+    return pain_mining_for_category(genre_id)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_pain_mining_apps(app_ids: tuple):
+    return pain_mining_for_apps(list(app_ids))
 
 
 def pln(x) -> str:
@@ -348,6 +365,21 @@ def page_radar() -> None:
                 "rating_drop": "Spadek (★)", "rating_count": "Liczba ocen"}),
                 width="stretch", hide_index=True)
 
+    dec_all = declining_apps_df()
+    if not dec_all.empty:
+        st.divider()
+        st.markdown("#### 🩹 Bieżąca wersja gorsza niż średnia — użytkownicy "
+                    "odwracają się TERAZ")
+        st.caption("Porównanie oceny bieżącej wersji z oceną lifetime (iTunes "
+                   "Lookup) — świeża luka widoczna już po jednym skanie.")
+        st.dataframe(dec_all.rename(columns={
+            "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
+            "rating_lifetime": "Ocena lifetime",
+            "rating_current_version": "Ocena bieżącej wersji",
+            "delta": "Spadek (★)", "rating_count": "Liczba ocen"}),
+            width="stretch", hide_index=True)
+        ui.how_button(["declining"], key="radar_how_declining")
+
 
 # =========================================================================== #
 #  PAGE: Niche Deep Dive
@@ -497,6 +529,137 @@ def page_deep() -> None:
                    "sukcesu łączy atrakcyjność niszy, lukę jakościową, zasięg płatny "
                    "i contestability.")
 
+    # ---- Structural signals: publishers, localization, current-version -----
+    st.divider()
+    g1, g2 = st.columns(2)
+    with g1:
+        st.markdown("#### 🏢 Kto kontroluje niszę?")
+        st.caption("10 apek od 10 firm ≠ 10 apek jednej firmy. Dominujący "
+                   "wydawca out-shipuje każdego nowego gracza.")
+        n_devs = row.get("num_developers")
+        dev_share = row.get("top_dev_share")
+        cd1, cd2 = st.columns(2)
+        cd1.metric("Niezależni wydawcy", num(n_devs) if pd.notna(n_devs) else "n/d")
+        cd2.metric("Udział największego", pct(dev_share) if pd.notna(dev_share) else "n/d")
+        if pd.notna(dev_share) and dev_share >= 0.5:
+            st.warning("⚠️ Jeden wydawca kontroluje ponad połowę ocen w tej "
+                       "niszy — to portfolio play, trudny przeciwnik.")
+        ddf = developer_concentration_df(genre_id)
+        if not ddf.empty:
+            show = ddf.copy()
+            show["share"] = show["share"].apply(pct)
+            st.dataframe(show.rename(columns={
+                "developer": "Wydawca", "apps": "Apek w top",
+                "ratings": "Suma ocen", "share": "Udział"}),
+                width="stretch", hide_index=True)
+        ui.how_button(["dev_concentration"], key="dd_how_devs")
+    with g2:
+        st.markdown("#### 🌍 Luka lokalizacyjna")
+        st.caption("Duzi konkurenci tylko po angielsku = otwarta nisza "
+                   "„ta sama wartość, ale w językach, których nikt nie obsługuje\".")
+        en_share = row.get("english_only_share")
+        st.metric("Duże apki EN-only", pct(en_share) if pd.notna(en_share) else "n/d",
+                  help="Odsetek dużych konkurentów wydających apkę wyłącznie "
+                       "po angielsku. ⬆️ WYŻEJ = większa okazja lokalizacyjna.")
+        ldf = localization_gap_df(genre_id)
+        if ldf.empty:
+            st.caption("Dane o językach pojawią się po pierwszym skanie "
+                       "z rozszerzonym scraperem.")
+        else:
+            show = ldf.copy()
+            show["english_only"] = show["english_only"].map({True: "🟠 tak", False: "nie"})
+            st.dataframe(show[["name", "ratings", "num_languages", "english_only"]]
+                         .rename(columns={
+                             "name": "Aplikacja", "ratings": "Liczba ocen",
+                             "num_languages": "Języki", "english_only": "Tylko EN"}),
+                         width="stretch", hide_index=True)
+        ui.how_button(["localization_gap"], key="dd_how_l10n")
+
+    st.markdown("#### 📉 Psujące się apki — bieżąca wersja gorsza niż lifetime")
+    st.caption("Użytkownicy odwracają się od apki *teraz* — najświeższy sygnał "
+               "otwierającej się luki (nie wymaga historii skanów).")
+    dec = declining_apps_df(genre_id)
+    if dec.empty:
+        st.caption("Brak wykrytych spadków — dane bieżącej wersji pojawią się "
+                   "po pierwszym skanie z rozszerzonym scraperem.")
+    else:
+        st.dataframe(dec.rename(columns={
+            "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
+            "rating_lifetime": "Ocena lifetime",
+            "rating_current_version": "Ocena bieżącej wersji",
+            "delta": "Spadek (★)", "rating_count": "Liczba ocen"}),
+            width="stretch", hide_index=True)
+    ui.how_button(["declining"], key="dd_how_declining")
+
+    rn = recent_release_notes_df(genre_id)
+    if not rn.empty:
+        with st.expander("🆕 Co konkurencja właśnie wydała (release notes)"):
+            for _, r in rn.iterrows():
+                st.markdown(f"**{r['name']}** — {r['updated']:%Y-%m-%d}")
+                st.caption(r["release_notes"] or "—")
+
+    # ---- LLM-free review mining over the FULL corpus ------------------------
+    st.divider()
+    st.markdown("#### 🔬 Analiza recenzji — pełny korpus (bez AI)")
+    st.caption("Systematyczna wersja zasady „przeczytaj 100+ recenzji każdego "
+               "konkurenta\": wzorce policzone na WSZYSTKICH zebranych "
+               "recenzjach tej niszy, nie na próbce.")
+    mining = load_pain_mining(genre_id)
+    if mining.reviews_total == 0:
+        st.info("Brak recenzji w bazie dla tej kategorii — uruchom "
+                "`python run.py scan`.")
+    else:
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Recenzje przeanalizowane", num(mining.reviews_total))
+        p2.metric("Negatywne (≤3★)", num(mining.reviews_negative))
+        p3.metric("Odsetek negatywnych",
+                  pct(mining.reviews_negative / max(mining.reviews_total, 1)),
+                  help="⬆️ wyżej = więcej niezadowolonych użytkowników do "
+                       "przejęcia lepszym produktem.")
+        ui.how_button(["pain_mining"], key="dd_how_mining")
+
+        if mining.themes:
+            tcol, qcol = st.columns([2, 3])
+            with tcol:
+                st.markdown("**Powtarzające się problemy (tematy bólu)**")
+                tdf = pd.DataFrame(
+                    [{"theme": t.theme, "share": t.share, "hits": t.hits}
+                     for t in mining.themes[:8]]
+                ).sort_values("share")
+                figp = go.Figure(go.Bar(
+                    x=tdf["share"], y=tdf["theme"], orientation="h",
+                    marker_color="#F97316",
+                    text=[f"{s * 100:.0f}%" for s in tdf["share"]],
+                    textposition="outside"))
+                figp.update_layout(
+                    xaxis_title="% negatywnych recenzji",
+                    xaxis_tickformat=".0%")
+                st.plotly_chart(style_fig(figp, 320), use_container_width=True)
+            with qcol:
+                st.markdown("**Głos użytkowników (cytaty)**")
+                for t in mining.themes[:4]:
+                    if not t.example:
+                        continue
+                    with st.container(border=True):
+                        st.markdown(f":orange-background[**{t.theme}**] "
+                                    f"· {t.hits} recenzji ({t.share * 100:.0f}%)")
+                        st.caption(f"„{t.example}\" — o *{t.example_app}*")
+
+        if mining.bigrams:
+            st.caption("**Najczęstsze frazy w negatywnych recenzjach:** " +
+                       " · ".join(f"`{b}` ({c})" for b, c in mining.bigrams[:12]))
+
+        if mining.app_negative_share:
+            with st.expander("😡 Apki z największym odsetkiem złych recenzji "
+                             "(najłatwiejsze cele)"):
+                adf = pd.DataFrame(mining.app_negative_share,
+                                   columns=["name", "neg_share", "reviews"])
+                adf["neg_share"] = adf["neg_share"].apply(pct)
+                st.dataframe(adf.rename(columns={
+                    "name": "Aplikacja", "neg_share": "% negatywnych",
+                    "reviews": "Recenzji w bazie"}),
+                    width="stretch", hide_index=True)
+
     st.divider()
     insight = latest_insight(genre_id)
     missing_features = None
@@ -595,6 +758,83 @@ def page_deep() -> None:
         if level == "SKIP":
             st.caption("⚠️ Pamiętaj: werdykt tej kategorii to SKIP. Powyższy plan "
                        "ma sens tylko dla **wąskiej pod-niszy**, nie dla całego rynku.")
+
+    # ---- Niche validation: the 5-question test, auto-filled from data --------
+    st.divider()
+    with st.container(border=True):
+        st.markdown("#### 🧪 Weryfikacja niszy — test 5 pytań")
+        st.caption("Zanim wejdziesz w niszę, wszystkie odpowiedzi powinny brzmieć "
+                   "„tak\". Pytania 1–4 wypełniamy automatycznie z danych; na "
+                   "piąte możesz odpowiedzieć tylko Ty.")
+
+        top_theme = mining.themes[0] if mining.themes else None
+        q1_ok = top_theme is not None and top_theme.share >= 0.20
+        q1_note = (f"najczęstszy ból „{top_theme.theme}\" dotyczy "
+                   f"{top_theme.share * 100:.0f}% negatywnych recenzji"
+                   if top_theme else "brak danych z recenzji")
+
+        qg = row["quality_gap"] or 0
+        n_dec = len(dec) if not dec.empty else 0
+        q2_ok = qg >= 0.3 or stale > 0 or n_dec > 0
+        q2_bits = []
+        if qg >= 0.3:
+            q2_bits.append(f"luka jakościowa {qg:.2f}")
+        if stale > 0:
+            q2_bits.append(f"{stale} porzuconych fortów")
+        if n_dec > 0:
+            q2_bits.append(f"{n_dec} psujących się apek")
+        q2_note = ", ".join(q2_bits) or "konkurencja jest dobra i aktywna"
+
+        paid_share = float((comp_df["price"] > 0).mean()) if not comp_df.empty else 0.0
+        pricing_theme = next(
+            (t for t in mining.themes if t.theme == "Ceny i subskrypcje"), None)
+        q3_ok = paid_share >= 0.10 or (
+            pricing_theme is not None and pricing_theme.share >= 0.10)
+        q3_bits = []
+        if paid_share > 0:
+            q3_bits.append(f"{paid_share * 100:.0f}% apek płatnych")
+        if pricing_theme:
+            q3_bits.append("użytkownicy realnie płacą (skarżą się na subskrypcje "
+                           f"w {pricing_theme.share * 100:.0f}% negatywnych recenzji)")
+        q3_note = ", ".join(q3_bits) or "brak sygnałów płacenia w tej niszy"
+
+        growth_val = None
+        gdf_all = category_growth_df(weeks=4)
+        if not gdf_all.empty:
+            hit = gdf_all[gdf_all["genre_id"] == genre_id]
+            if not hit.empty and pd.notna(hit["growth_pct"].iloc[0]):
+                growth_val = float(hit["growth_pct"].iloc[0])
+        mom = row.get("momentum") or 0
+        q4_ok = (growth_val is not None and growth_val > 0) or mom > 0.5
+        q4_note = (f"wzrost 4-tyg. {growth_val * 100:+.0f}%"
+                   if growth_val is not None
+                   else "za mało historii — obserwuj momentum")
+
+        def _check(ok: bool, label: str, note: str) -> None:
+            icon = "✅" if ok else "⚠️"
+            st.markdown(f"{icon} **{label}** — {note}.")
+
+        _check(q1_ok, "1. Czy problem jest wystarczająco dotkliwy?", q1_note)
+        _check(q2_ok, "2. Czy możesz być znacząco lepszy w kluczowym aspekcie?",
+               q2_note)
+        _check(q3_ok, "3. Czy nisza się monetyzuje?", q3_note)
+        _check(q4_ok, "4. Czy nisza ma potencjał wzrostu?", q4_note)
+        q5 = st.checkbox(
+            "5. Mam unikalną przewagę w tej niszy (doświadczenie, wiedza "
+            "branżowa, dostęp do grupy odbiorców)",
+            key=f"q5_{genre_id}",
+        )
+        score5 = sum([q1_ok, q2_ok, q3_ok, q4_ok, q5])
+        if score5 >= 4:
+            st.success(f"**{score5}/5** — nisza przechodzi test. Czas na MVP "
+                       "w wąskiej pod-niszy.")
+        elif score5 >= 3:
+            st.info(f"**{score5}/5** — obiecujące, ale domknij brakujące punkty "
+                    "zanim zainwestujesz.")
+        else:
+            st.warning(f"**{score5}/5** — za słabo. Szukaj węższej pod-niszy "
+                       "albo innej kategorii.")
+        ui.how_button(["niche_checklist"], key="dd_how_checklist")
 
     with st.expander("Wszyscy konkurenci w tej niszy (z linkami do App Store)"):
         if comp_df.empty:
@@ -747,6 +987,25 @@ def page_micro() -> None:
                 {"name": "Aplikacja", "developer": "Wydawca",
                  "rating": "Ocena", "ratings": "Liczba ocen"},
             )
+
+        # Full-corpus pain mining for the keyword's competitors - works when
+        # any of them are already tracked (reviews in DB).
+        kw_app_ids = tuple(
+            int(a["app_id"]) for a in apps if a.get("app_id")
+        )
+        if kw_app_ids:
+            kw_mining = load_pain_mining_apps(kw_app_ids)
+            if kw_mining.reviews_negative > 0 and kw_mining.themes:
+                st.markdown("#### 🔬 Problemy użytkowników konkurencji (z recenzji)")
+                st.caption(f"Przeanalizowano {num(kw_mining.reviews_total)} recenzji "
+                           "konkurentów tej frazy zebranych w bazie.")
+                for t in kw_mining.themes[:5]:
+                    line = (f"- **{t.theme}** — {t.hits} recenzji "
+                            f"({t.share * 100:.0f}% negatywnych)")
+                    if t.example:
+                        line += f' · np. „{t.example[:140]}"'
+                    st.markdown(line)
+                ui.how_button(["pain_mining"], key="kw_how_mining")
 
 
 # =========================================================================== #

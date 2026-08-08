@@ -112,7 +112,33 @@ def _latest_score(session: Session, genre_id: int) -> Optional[CategoryScore]:
     ).scalars().first()
 
 
-def _reviews_prompt(cat_name: str, reviews: List[Review]) -> str:
+def _mining_context(genre_id: int) -> str:
+    """Deterministic full-corpus stats so the LLM's sample of ~120 reviews is
+    grounded in what the WHOLE corpus (often 10k+) actually says."""
+    try:
+        from src.analysis.review_mining import mine_pains
+
+        mining = mine_pains(genre_id=genre_id)
+    except Exception as exc:  # noqa: BLE001 - mining must never block the LLM
+        logger.warning("Pain mining failed for %s: %s", genre_id, exc)
+        return ""
+    if not mining.themes:
+        return ""
+    themes = "; ".join(
+        f"{t.theme}: {t.hits} negative reviews ({t.share * 100:.0f}%)"
+        for t in mining.themes[:8]
+    )
+    phrases = ", ".join(f'"{b}"' for b, _ in mining.bigrams[:10])
+    return (
+        f"FULL-CORPUS STATS (computed over ALL {mining.reviews_total} stored "
+        f"reviews, {mining.reviews_negative} negative - use these to weigh how "
+        f"representative the sampled reviews below are):\n"
+        f"Recurring pain themes: {themes}\n"
+        f"Most repeated phrases in negative reviews: {phrases}\n\n"
+    )
+
+
+def _reviews_prompt(cat_name: str, reviews: List[Review], genre_id: int) -> str:
     lines = []
     for r in reviews:
         body = (r.body or "").strip().replace("\n", " ")[:MAX_REVIEW_CHARS]
@@ -123,6 +149,7 @@ def _reviews_prompt(cat_name: str, reviews: List[Review]) -> str:
         f"App Store category: {cat_name}\n"
         f"Below are {len(reviews)} real user reviews (mostly critical - that is where "
         f"unmet needs surface). Analyse them.\n\n"
+        f"{_mining_context(genre_id)}"
         f"Return STRICTLY this JSON shape (5-8 pain_points, 3-6 missing_features, "
         f"ranked by frequency/severity):\n{json.dumps(_JSON_SCHEMA, indent=2)}\n\n"
         f"REVIEWS:\n{corpus}"
@@ -165,7 +192,7 @@ def _build(session: Session, genre_id: int, cat_name: str) -> Optional[Tuple[str
     """Return (prompt, source, n_analyzed) or None if we have nothing to work with."""
     reviews = _select_reviews(session, genre_id)
     if reviews:
-        return _reviews_prompt(cat_name, reviews), "reviews", len(reviews)
+        return _reviews_prompt(cat_name, reviews, genre_id), "reviews", len(reviews)
 
     apps = _select_competitors(session, genre_id)
     if apps:

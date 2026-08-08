@@ -45,6 +45,7 @@ def ensure_categories(session: Session) -> None:
         else:
             cat.name = seed.name
             cat.is_games = seed.is_games
+            cat.enabled = seed.enabled
             cat.base_cpi_usd = seed.base_cpi_usd
 
 
@@ -97,13 +98,16 @@ def _scrape_category(
     fetch_reviews: bool,
     counters: Dict[str, int],
 ) -> None:
-    # Collect chart entries (dedupe across chart types, keep best rank).
+    # Collect chart entries (dedupe across chart types, keep best rank and
+    # remember WHICH chart that best rank came from).
     best_entry: Dict[int, ChartEntry] = {}
+    chart_of: Dict[int, str] = {}
     for chart in settings.chart_list:
         for entry in client.top_chart(chart, genre_id, settings.top_n_apps):
             existing = best_entry.get(entry.app_id)
             if existing is None or entry.rank < existing.rank:
                 best_entry[entry.app_id] = entry
+                chart_of[entry.app_id] = chart
 
     if not best_entry:
         return
@@ -121,18 +125,20 @@ def _scrape_category(
                 AppSnapshot(
                     app_id=app_id,
                     genre_id=genre_id,
-                    chart_type=settings.chart_list[0],
+                    chart_type=chart_of.get(app_id, settings.chart_list[0]),
                     rank=entry.rank,
                     rating_avg=meta.rating_avg if meta else None,
                     rating_count=meta.rating_count if meta else None,
                     version=meta.version if meta else None,
+                    rating_avg_current=meta.rating_avg_current if meta else None,
+                    rating_count_current=meta.rating_count_current if meta else None,
                     current_version_release_date=(
                         meta.current_version_release_date if meta else None
                     ),
                 )
             )
             counters["snapshots"] += 1
-            # persist app-level metadata (description + free date signals)
+            # persist app-level metadata (description + free lookup signals)
             if meta:
                 app = session.get(App, app_id)
                 if app is not None:
@@ -144,6 +150,24 @@ def _scrape_category(
                         app.current_version_release_date = (
                             meta.current_version_release_date
                         )
+                    if meta.artist_id:
+                        app.artist_id = meta.artist_id
+                    if meta.genre_ids:
+                        app.genre_ids = meta.genre_ids
+                    if meta.language_codes:
+                        app.language_codes = meta.language_codes
+                    if meta.screenshot_count:
+                        app.screenshot_count = meta.screenshot_count
+                    if meta.ipad_screenshot_count:
+                        app.ipad_screenshot_count = meta.ipad_screenshot_count
+                    if meta.file_size_mb:
+                        app.file_size_mb = meta.file_size_mb
+                    if meta.minimum_os_version:
+                        app.minimum_os_version = meta.minimum_os_version
+                    if meta.content_rating:
+                        app.content_rating = meta.content_rating
+                    if meta.release_notes:
+                        app.release_notes = meta.release_notes[:4000]
 
     if fetch_reviews:
         _scrape_reviews_for_category(app_ids, counters)

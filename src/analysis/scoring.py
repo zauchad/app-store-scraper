@@ -31,6 +31,12 @@ QUALITY_GAP_SPAN = 1.0  # gap saturates ~1.0 star below the bar
 # opening even if it still has lots of legacy reviews.
 STALE_DAYS = 365
 
+# --- Current-version decline ------------------------------------------------ #
+# A sizeable app whose CURRENT version rates this much below its lifetime
+# average = users souring right now (fresh quality gap, no history needed).
+DECLINE_MIN_DELTA = 0.3
+DECLINE_MIN_REVIEWS = 5_000
+
 # --- Base component weights (momentum dropped + renormalised when no history) #
 WEIGHTS = {
     "demand": 0.25,

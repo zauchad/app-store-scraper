@@ -70,6 +70,22 @@ class AppMetadata:
     # Already present in the Lookup/Search payload - free extra signals:
     release_date: Optional[datetime] = None            # app age
     current_version_release_date: Optional[datetime] = None  # update cadence
+    # Publisher analysis: who owns the niche (1 firm with 10 apps vs 10 firms).
+    artist_id: Optional[int] = None
+    # All genres the app ranks in (cross-category positioning).
+    genre_ids: List[int] = field(default_factory=list)
+    # Current-version rating vs lifetime = "is the app getting worse RIGHT NOW".
+    rating_avg_current: Optional[float] = None
+    rating_count_current: Optional[int] = None
+    # What the competition just shipped (feature velocity signal).
+    release_notes: Optional[str] = None
+    # Localization gap: English-only apps = opening for localized clones.
+    language_codes: List[str] = field(default_factory=list)
+    screenshot_count: int = 0
+    ipad_screenshot_count: int = 0
+    file_size_mb: Optional[float] = None
+    minimum_os_version: Optional[str] = None
+    content_rating: Optional[str] = None
 
 
 @dataclass
@@ -209,15 +225,30 @@ class ItunesClient:
             current_version_release_date=_parse_apple_date(
                 r.get("currentVersionReleaseDate")
             ),
+            artist_id=_to_int(r.get("artistId")),
+            genre_ids=[g for g in (_to_int(x) for x in r.get("genreIds", []) or []) if g],
+            rating_avg_current=r.get("averageUserRatingForCurrentVersion"),
+            rating_count_current=_to_int(r.get("userRatingCountForCurrentVersion")),
+            release_notes=r.get("releaseNotes"),
+            language_codes=[str(c) for c in r.get("languageCodesISO2A", []) or []],
+            screenshot_count=len(r.get("screenshotUrls", []) or []),
+            ipad_screenshot_count=len(r.get("ipadScreenshotUrls", []) or []),
+            file_size_mb=_to_mb(r.get("fileSizeBytes")),
+            minimum_os_version=r.get("minimumOsVersion"),
+            content_rating=r.get("contentAdvisoryRating") or r.get("trackContentRating"),
         )
 
     # ---- search (micro-niche discovery) ---------------------------------
-    def search(self, term: str, limit: int = 50) -> List[AppMetadata]:
+    def search(
+        self, term: str, limit: int = 50, genre_id: Optional[int] = None
+    ) -> List[AppMetadata]:
         """iTunes Search API - free, reliable, returns full metadata + ratings.
 
         This is the engine of micro-niche discovery: it returns the apps that
         actually compete for a specific search term (a candidate niche), each
         with its exact rating avg/count, so we can score the niche directly.
+        `genre_id` restricts results to one category, so a keyword analysed in
+        the context of e.g. Health & Fitness is not polluted by unrelated apps.
         """
         from urllib.parse import quote_plus
 
@@ -226,6 +257,8 @@ class ItunesClient:
             f"{BASE}/search?term={quote_plus(term)}&country={self.country}"
             f"&entity=software&limit={limit}"
         )
+        if genre_id:
+            url += f"&genreId={int(genre_id)}"
         try:
             data = self._get_json(url)
         except Exception as exc:  # noqa: BLE001 - one term must not kill a batch
@@ -314,6 +347,7 @@ class ItunesClient:
             title = (e.get("title", {}) or {}).get("label")
             body = (e.get("content", {}) or {}).get("label")
             version = (e.get("im:version", {}) or {}).get("label")
+            updated = _parse_apple_date((e.get("updated", {}) or {}).get("label"))
             return ReviewItem(
                 review_id=str(rid),
                 author=author,
@@ -321,6 +355,7 @@ class ItunesClient:
                 body=body,
                 rating=rating,
                 version=version,
+                updated=updated,
             )
         except Exception:  # noqa: BLE001
             return None
@@ -329,6 +364,20 @@ class ItunesClient:
 def _chunks(items: List[int], size: int):
     for i in range(0, len(items), size):
         yield items[i : i + size]
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_mb(value: Any) -> Optional[float]:
+    try:
+        return round(int(value) / (1024 * 1024), 1) if value else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_apple_date(value: Optional[str]) -> Optional[datetime]:
