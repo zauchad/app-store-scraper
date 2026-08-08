@@ -28,6 +28,30 @@ negatywnych recenzji oraz ranking apek o najwyższym odsetku złych ocen.
 To systematyczna wersja zasady „przeczytaj min. 100 recenzji konkurenta" —
 wyniki trafiają też do promptu LLM jako twarde statystyki całego korpusu.
 
+### Sygnały monetyzacji i płynności rynku
+
+* **Monetyzacja (free→grossing)** — skanujemy `topfree` **i** `topgrossing`;
+  odsetek top-free apek obecnych też w top-grossing = jedyny darmowy dowód,
+  że użytkownicy w tej niszy realnie płacą. Zasila pytanie 3 checklisty.
+* **Świeżość rynku** — odsetek top-apek wydanych <2 lata temu; nisko =
+  rynek zabetonowany. Sekcja **Młodzi zwycięzcy** pokazuje konkretne nowe
+  apki, które już się przebiły (dowód wykonalności + wzorce wejścia).
+* **Instalacje/mies. per apka** — tempo przyrostu ocen między skanami →
+  popyt DZIŚ, nie suma historyczna.
+
+### Keyword discovery i geo-arbitraż (Mikro-nisze)
+
+* **Crawl autocomplete Apple** (fraza + a–z) → long-tail frazy, które ludzie
+  faktycznie wpisują — weryfikowalny popyt zamiast zgadywania.
+* **Geo-radar** — ta sama fraza porównana w US/GB/DE/FR/PL: gdzie konkurencja
+  najsłabsza, tam zlokalizowana wersja apki wchodzi najtaniej.
+
+### Eksport i raporty
+
+* Eksport CSV tabel (Radar, Mikro-nisze) oraz **jednoklikowy raport niszy
+  (.md)** łączący scoring, pain-mining, AI, kandydatów i checklist — gotowy
+  artefakt do udostępnienia.
+
 ### Sygnały strukturalne niszy (darmowe, z iTunes Lookup)
 
 * **Koncentracja wydawców** — czy niszę trzyma 10 firm, czy 1 firma z 10

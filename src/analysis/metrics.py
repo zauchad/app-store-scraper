@@ -46,6 +46,10 @@ logger = get_logger(__name__)
 # describe the CURRENT competitive picture - the app fell off the chart.
 SNAPSHOT_FRESH_DAYS = 7
 
+# An app released within this window counts as a "newcomer" - the share of
+# newcomers in the top measures whether the market still lets new players in.
+NEWCOMER_MAX_AGE_DAYS = 2 * 365
+
 
 @dataclass
 class CategoryAggregate:
@@ -65,6 +69,9 @@ class CategoryAggregate:
     top_dev_share: Optional[float] = None  # ratings share of biggest publisher
     english_only_share: Optional[float] = None  # sizeable apps shipping EN-only
     num_declining_incumbents: Optional[int] = None  # current version << lifetime
+    monetization_score: Optional[float] = None  # free apps also in top-grossing
+    paid_share: Optional[float] = None  # share of paid (price > 0) top apps
+    newcomer_share: Optional[float] = None  # top apps released in last ~2 years
 
 
 def _latest_snapshot_per_app(
@@ -168,6 +175,8 @@ def compute_category_aggregate(
     num_devs, top_dev_share = _developer_concentration(session, latest)
     english_only = _english_only_share(session, latest)
     declining = _declining_incumbents(latest)
+    monetization = _monetization_score(latest)
+    paid_share, newcomer_share = _paid_and_newcomer_share(session, latest, run_ts)
 
     return CategoryAggregate(
         genre_id=genre_id,
@@ -186,7 +195,43 @@ def compute_category_aggregate(
         top_dev_share=top_dev_share,
         english_only_share=english_only,
         num_declining_incumbents=declining,
+        monetization_score=monetization,
+        paid_share=paid_share,
+        newcomer_share=newcomer_share,
     )
+
+
+def _monetization_score(latest: List[AppSnapshot]) -> Optional[float]:
+    """Share of top-FREE apps that also rank in top-GROSSING.
+
+    High = freemium converts here (users pay); low = attention without wallets.
+    None until a scan has run with the grossing chart enabled.
+    """
+    free = [s for s in latest if s.in_free_chart]
+    if not free or not any(s.in_grossing_chart for s in latest):
+        return None
+    both = sum(1 for s in free if s.in_grossing_chart)
+    return round(both / len(free), 4)
+
+
+def _paid_and_newcomer_share(
+    session: Session, latest: List[AppSnapshot], run_ts: datetime
+) -> tuple:
+    """(share of paid apps in the top, share of apps released <2y ago)."""
+    apps = _apps_for_snapshots(session, latest)
+    if not apps:
+        return None, None
+    paid = sum(1 for a in apps if (a.price or 0) > 0)
+    paid_share = round(paid / len(apps), 4)
+    with_age = [a for a in apps if a.release_date is not None]
+    newcomer_share = None
+    if with_age:
+        young = sum(
+            1 for a in with_age
+            if (run_ts - a.release_date).days <= NEWCOMER_MAX_AGE_DAYS
+        )
+        newcomer_share = round(young / len(with_age), 4)
+    return paid_share, newcomer_share
 
 
 def _apps_for_snapshots(session: Session, latest: List[AppSnapshot]) -> List[App]:

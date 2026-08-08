@@ -99,11 +99,14 @@ def _scrape_category(
     counters: Dict[str, int],
 ) -> None:
     # Collect chart entries (dedupe across chart types, keep best rank and
-    # remember WHICH chart that best rank came from).
+    # remember WHICH chart that best rank came from). Full membership per chart
+    # is kept too: free∩grossing overlap is the monetization signal.
     best_entry: Dict[int, ChartEntry] = {}
     chart_of: Dict[int, str] = {}
+    membership: Dict[int, set] = {}
     for chart in settings.chart_list:
         for entry in client.top_chart(chart, genre_id, settings.top_n_apps):
+            membership.setdefault(entry.app_id, set()).add(chart)
             existing = best_entry.get(entry.app_id)
             if existing is None or entry.rank < existing.rank:
                 best_entry[entry.app_id] = entry
@@ -126,6 +129,12 @@ def _scrape_category(
                     app_id=app_id,
                     genre_id=genre_id,
                     chart_type=chart_of.get(app_id, settings.chart_list[0]),
+                    in_free_chart=any(
+                        "free" in c for c in membership.get(app_id, set())
+                    ),
+                    in_grossing_chart=any(
+                        "grossing" in c for c in membership.get(app_id, set())
+                    ),
                     rank=entry.rank,
                     rating_avg=meta.rating_avg if meta else None,
                     rating_count=meta.rating_count if meta else None,

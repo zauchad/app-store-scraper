@@ -53,6 +53,7 @@ from src.reporting import (  # noqa: E402
     quality_movers_df,
     recent_release_notes_df,
     rising_apps_df,
+    young_winners_df,
 )
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
@@ -333,8 +334,14 @@ def page_radar() -> None:
     )
     st.caption("Przejdź do **Analiza**, by zobaczyć problemy użytkowników "
                "i kandydatów do ulepszenia w wybranej niszy.")
-    ui.how_button(["opportunity_score", "growth", "installs", "contestability",
-                   "cpi", "verdict"], key="radar_how_table")
+    cexp1, cexp2 = st.columns([1, 4])
+    cexp1.download_button(
+        "⬇️ Eksport CSV", data=disp.to_csv(index=False).encode("utf-8"),
+        file_name="radar-nisz.csv", mime="text/csv", key="radar_csv",
+    )
+    with cexp2:
+        ui.how_button(["opportunity_score", "growth", "installs", "contestability",
+                       "cpi", "verdict"], key="radar_how_table")
 
     st.divider()
     m1, m2 = st.columns(2)
@@ -467,6 +474,25 @@ def page_deep() -> None:
                    "strong_incumbents", "mega_incumbents", "contestability"],
                   key="dd_how_metrics")
 
+    # Monetization + market fluidity (blog test #3 and #4, answered with data).
+    mon = row.get("monetization_score")
+    paid = row.get("paid_share")
+    newc = row.get("newcomer_share")
+    b1, b2, b3 = st.columns(3)
+    b1.metric("Monetyzacja (free→grossing)",
+              pct(mon) if pd.notna(mon) else "n/d",
+              help="Odsetek top-free apek, które są TAKŻE w top-grossing = "
+                   "użytkownicy realnie płacą w tej niszy. ⬆️ WYŻEJ = łatwiej "
+                   "sprzedać subskrypcję.")
+    b2.metric("Apki płatne w top", pct(paid) if pd.notna(paid) else "n/d",
+              help="Odsetek apek z ceną > 0. Sygnał gotowości do płacenia "
+                   "z góry.")
+    b3.metric("Świeżość rynku", pct(newc) if pd.notna(newc) else "n/d",
+              help="Odsetek top-apek wydanych w ciągu ostatnich 2 lat. "
+                   "⬆️ WYŻEJ = nowi gracze wciąż się przebijają (rynek "
+                   "niezabetonowany).")
+    ui.how_button(["monetization", "newcomer_share"], key="dd_how_monet")
+
     stale = int(row.get("stale_incumbents", 0) or 0)
     days_upd = row.get("median_days_since_update")
     if stale > 0:
@@ -590,6 +616,25 @@ def page_deep() -> None:
             "delta": "Spadek (★)", "rating_count": "Liczba ocen"}),
             width="stretch", hide_index=True)
     ui.how_button(["declining"], key="dd_how_declining")
+
+    st.markdown("#### 🌱 Młodzi zwycięzcy — nowe apki, które już się przebiły")
+    st.caption("Apki wydane w ciągu 24 miesięcy, które są już w top-chartach. "
+               "Najlepszy dowód, że w tej niszy wciąż da się wejść — ich "
+               "pozycjonowanie pokazuje działające punkty wejścia.")
+    young = young_winners_df(genre_id)
+    if young.empty:
+        st.caption("Brak młodych apek w top — rynek wygląda na zabetonowany "
+                   "(to ważny sygnał ostrzegawczy).")
+    else:
+        yshow = young.copy()
+        yshow["Instalacje (life.)"] = yshow["ratings"].apply(installs_label)
+        app_link_table(
+            yshow[["name", "developer", "age_months", "rank", "rating",
+                   "ratings", "Instalacje (life.)", "url"]],
+            {"name": "Aplikacja", "developer": "Wydawca",
+             "age_months": "Wiek (mies.)", "rank": "Pozycja",
+             "rating": "Ocena", "ratings": "Liczba ocen"})
+    ui.how_button(["young_winners"], key="dd_how_young")
 
     rn = recent_release_notes_df(genre_id)
     if not rn.empty:
@@ -785,14 +830,23 @@ def page_deep() -> None:
             q2_bits.append(f"{n_dec} psujących się apek")
         q2_note = ", ".join(q2_bits) or "konkurencja jest dobra i aktywna"
 
-        paid_share = float((comp_df["price"] > 0).mean()) if not comp_df.empty else 0.0
+        paid_local = (float((comp_df["price"] > 0).mean())
+                      if not comp_df.empty else 0.0)
+        if pd.notna(paid):
+            paid_local = float(paid)
         pricing_theme = next(
             (t for t in mining.themes if t.theme == "Ceny i subskrypcje"), None)
-        q3_ok = paid_share >= 0.10 or (
-            pricing_theme is not None and pricing_theme.share >= 0.10)
+        q3_ok = (
+            (pd.notna(mon) and float(mon) >= 0.2)
+            or paid_local >= 0.10
+            or (pricing_theme is not None and pricing_theme.share >= 0.10)
+        )
         q3_bits = []
-        if paid_share > 0:
-            q3_bits.append(f"{paid_share * 100:.0f}% apek płatnych")
+        if pd.notna(mon):
+            q3_bits.append(f"{float(mon) * 100:.0f}% top-free apek zarabia "
+                           "(jest też w top-grossing)")
+        if paid_local > 0:
+            q3_bits.append(f"{paid_local * 100:.0f}% apek płatnych")
         if pricing_theme:
             q3_bits.append("użytkownicy realnie płacą (skarżą się na subskrypcje "
                            f"w {pricing_theme.share * 100:.0f}% negatywnych recenzji)")
@@ -836,17 +890,42 @@ def page_deep() -> None:
                        "albo innej kategorii.")
         ui.how_button(["niche_checklist"], key="dd_how_checklist")
 
+    # ---- One-click niche report: the shareable deliverable -------------------
+    st.divider()
+    rc1, rc2 = st.columns([1, 3], vertical_alignment="center")
+    with rc1:
+        if st.button("📄 Generuj raport niszy", key=f"gen_report_{genre_id}"):
+            from src.pipeline.niche_report import build_niche_report
+            with st.spinner("Składam raport…"):
+                st.session_state[f"report_{genre_id}"] = build_niche_report(genre_id)
+    with rc2:
+        report_md = st.session_state.get(f"report_{genre_id}")
+        if report_md:
+            st.download_button(
+                "⬇️ Pobierz raport (.md)", data=report_md,
+                file_name=f"raport-niszy-{choice.lower().replace(' ', '-')}.md",
+                mime="text/markdown", key=f"dl_report_{genre_id}",
+            )
+        else:
+            st.caption("Raport łączy wszystko z tej strony w jeden plik Markdown "
+                       "— do udostępnienia, archiwum lub porównań między niszami.")
+
     with st.expander("Wszyscy konkurenci w tej niszy (z linkami do App Store)"):
         if comp_df.empty:
             st.caption("Brak danych o aplikacjach.")
         else:
             show = comp_df.copy()
             show["Instalacje (life.)"] = show["ratings"].apply(installs_label)
+            show["monthly_installs"] = show["monthly_installs"].fillna("n/d")
             show = show[["name", "developer", "rating", "ratings", "Instalacje (life.)",
-                         "days_since_update", "url"]]
+                         "monthly_installs", "days_since_update", "url"]]
             app_link_table(show, {
                 "name": "Aplikacja", "developer": "Wydawca", "rating": "Ocena",
-                "ratings": "Liczba ocen", "days_since_update": "Dni od aktualizacji"})
+                "ratings": "Liczba ocen", "days_since_update": "Dni od aktualizacji",
+                "monthly_installs": "Instalacje/mies. (teraz)"})
+            st.caption("„Instalacje/mies. (teraz)\" = tempo przyrostu ocen między "
+                       "skanami ÷ współczynnik ocen (1–3%) — popyt DZIŚ, nie "
+                       "suma historyczna.")
 
 
 # =========================================================================== #
@@ -877,10 +956,14 @@ def page_micro() -> None:
                                       list(genre_options))
             theme = st.text_input("Motyw dla generatora AI",
                                   placeholder="np. habit tracking for ADHD")
-        cA, cB = st.columns(2)
+        cA, cB, cC = st.columns(3)
         gen = cA.checkbox("Wygeneruj kandydatów przez AI", value=False,
                           help="Wymaga GEMINI_API_KEY. AI zaproponuje mikro-nisze.")
-        n_kw = cB.slider("Ile wygenerować", 5, 25, 12)
+        expand = cB.checkbox("Rozszerz przez autocomplete Apple", value=False,
+                             help="Crawluje podpowiedzi App Store (fraza + a–z): "
+                                  "long-tail frazy, które ludzie FAKTYCZNIE "
+                                  "wpisują — w przeciwieństwie do zgadywania AI.")
+        n_kw = cC.slider("Ile wygenerować", 5, 25, 12)
         submitted = st.form_submit_button("Analizuj mikro-nisze", type="primary",
                                           width="stretch")
 
@@ -893,6 +976,18 @@ def page_micro() -> None:
         elif not terms and not gen:
             st.warning("Podaj przynajmniej jedno słowo kluczowe albo włącz generator AI.")
         else:
+            if expand and terms:
+                from src.analysis.microniche import expand_keywords_autocomplete
+                with st.spinner("Crawluję autocomplete App Store (frazy, które "
+                                "ludzie naprawdę wpisują)…"):
+                    harvested: list = []
+                    for seed in terms[:3]:
+                        harvested += expand_keywords_autocomplete(seed, max_terms=15)
+                    new_terms = [t for t in harvested if t not in terms]
+                    if new_terms:
+                        st.success(f"Autocomplete dodał {len(new_terms)} realnych "
+                                   f"fraz: {', '.join(new_terms[:8])}…")
+                        terms = list(dict.fromkeys(terms + new_terms))
             with st.spinner("Szukam i oceniam mikro-nisze (Search API + AI)…"):
                 from src.pipeline.keyword_scan import run_keyword_scan
                 try:
@@ -943,8 +1038,14 @@ def page_micro() -> None:
     )
     st.caption("💡 Sweet spot ASO: **wysoki Popyt wysz. + niska Trudność** "
                "(dużo szukają, słabi konkurenci do wyprzedzenia).")
-    ui.how_button(["opportunity_score", "search_interest", "difficulty",
-                   "installs", "cpi", "verdict"], key="kw_how_table")
+    ce1, ce2 = st.columns([1, 4])
+    ce1.download_button(
+        "⬇️ Eksport CSV", data=kdisp[view_cols].to_csv(index=False).encode("utf-8"),
+        file_name="mikro-nisze.csv", mime="text/csv", key="kw_csv",
+    )
+    with ce2:
+        ui.how_button(["opportunity_score", "search_interest", "difficulty",
+                       "installs", "cpi", "verdict"], key="kw_how_table")
 
     picked = st.session_state.get("kw_pick", kdf["term"].iloc[0])
     if event.selection.rows:
@@ -970,6 +1071,30 @@ def page_micro() -> None:
     d6.metric("Contestability", f"{krow['contestability']:.2f}")
     ui.how_button(["opportunity_score", "demand", "search_interest", "difficulty",
                    "quality_gap", "contestability"], key="kw_how_detail")
+
+    # Geo arbitrage: the same niche can be besieged in the US and open in DE/PL.
+    st.markdown("##### 🌍 Geo-radar — ta sama nisza w innych krajach")
+    if st.button("Porównaj konkurencję w US · GB · DE · FR · PL",
+                 key=f"geo_{picked}"):
+        from src.analysis.microniche import geo_scan
+        with st.spinner("Odpytuję storefronty (5 krajów)…"):
+            st.session_state[f"geo_res_{picked}"] = geo_scan(picked)
+    geo_res = st.session_state.get(f"geo_res_{picked}")
+    if geo_res:
+        gdf_geo = pd.DataFrame(geo_res)
+        gdf_geo["difficulty"] = gdf_geo["difficulty"].apply(lambda x: f"{x:.2f}")
+        st.dataframe(gdf_geo.rename(columns={
+            "country": "Kraj", "num_results": "Wyników",
+            "avg_rating": "Śr. ocena", "median_ratings": "Mediana ocen",
+            "fortresses": "Twierdze", "megas": "Giganci",
+            "difficulty": "Trudność ASO", "top_app": "Lider"}),
+            width="stretch", hide_index=True)
+        easiest = geo_res[0]
+        st.success(f"🎯 Najłatwiejszy rynek dla tej frazy: **{easiest['country']}** "
+                   f"(trudność {easiest['difficulty']:.2f}, "
+                   f"{easiest['fortresses']} twierdz). Ta sama apka, "
+                   f"zlokalizowana, może wejść tam najtaniej.")
+        ui.how_button(["geo_scan"], key=f"kw_how_geo_{picked}")
 
     apps = krow.get("top_apps") or []
     if apps:

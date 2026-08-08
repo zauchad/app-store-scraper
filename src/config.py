@@ -48,7 +48,8 @@ class Settings(BaseSettings):
     # --- Scraper ---
     store_country: str = "us"
     top_n_apps: int = 50
-    charts: str = "topfree"
+    # topgrossing = the only free "people actually PAY here" proxy; keep it on.
+    charts: str = "topfree,topgrossing"
     excluded_genre_ids: str = "6014"
     review_pages_per_app: int = 5
 

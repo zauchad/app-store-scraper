@@ -187,6 +187,74 @@ def analyze_terms(
     return results
 
 
+def expand_keywords_autocomplete(seed: str, max_terms: int = 30) -> List[str]:
+    """Harvest REAL App Store search phrases around a seed term.
+
+    Classic ASO keyword research done free: Apple's autocomplete returns
+    phrases people actually type, ~ordered by popularity. We crawl the seed
+    plus `seed + ' ' + letter` variations to surface the long tail
+    ("sleep tracker" -> "sleep tracker for apple watch", "... for kids", ...).
+    Unlike LLM generation these are guaranteed to have search demand.
+    """
+    client = ItunesClient(country=settings.store_country)
+    seed = seed.strip().lower()
+    if not seed:
+        return []
+    seen: List[str] = []
+
+    def _add(terms: List[str]) -> None:
+        for t in terms:
+            t = t.strip().lower()
+            if t and t != seed and t not in seen:
+                seen.append(t)
+
+    _add(client.search_hints(seed))
+    for letter in "abcdefghijklmnopqrstuvwxyz":
+        if len(seen) >= max_terms:
+            break
+        _add(client.search_hints(f"{seed} {letter}"))
+    logger.info("Autocomplete expansion %r -> %d real phrases", seed, len(seen))
+    return seen[:max_terms]
+
+
+# Storefronts for the geo arbitrage check: big Western markets + home market.
+GEO_COUNTRIES = ("us", "gb", "de", "fr", "pl")
+
+
+def geo_scan(term: str, countries: tuple = GEO_COUNTRIES) -> List[dict]:
+    """Compare the SAME niche across storefronts (geo arbitrage).
+
+    A term besieged in the US is often wide open in DE/PL: same demand
+    pattern, far weaker incumbents. One Search API call per country.
+    """
+    out: List[dict] = []
+    for cc in countries:
+        client = ItunesClient(country=cc)
+        apps = client.search(term, limit=TOP_N_RESULTS)
+        top = apps[:TOP_N_RESULTS]
+        rows = [(a.rating_avg, a.rating_count or 0) for a in top]
+        ratings = [a.rating_avg for a in top if a.rating_avg is not None]
+        counts = [a.rating_count or 0 for a in top]
+        num_fortress, num_mega = count_incumbents(rows)
+        median_count = int(statistics.median(counts)) if counts else 0
+        out.append(
+            {
+                "country": cc.upper(),
+                "num_results": len(apps),
+                "avg_rating": round(sum(ratings) / len(ratings), 2) if ratings else None,
+                "median_ratings": median_count,
+                "fortresses": num_fortress,
+                "megas": num_mega,
+                "difficulty": keyword_difficulty(
+                    median_count, num_fortress, num_mega, max(len(top), 1)
+                ),
+                "top_app": top[0].name if top else None,
+            }
+        )
+    out.sort(key=lambda r: r["difficulty"])
+    return out
+
+
 def _persist(results: List[KeywordResult], source: str) -> None:
     with session_scope() as session:
         for r in results:

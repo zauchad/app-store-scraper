@@ -60,6 +60,9 @@ def latest_scores_df() -> pd.DataFrame:
                 "top_dev_share": score.top_dev_share,
                 "english_only_share": score.english_only_share,
                 "declining_incumbents": score.num_declining_incumbents,
+                "monetization_score": score.monetization_score,
+                "paid_share": score.paid_share,
+                "newcomer_share": score.newcomer_share,
                 "est_cpi_pln": score.est_cpi_pln,
                 "est_installs_month": score.est_installs_month,
                 "marketing_cost_pln": score.marketing_cost_pln,
@@ -108,6 +111,8 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
     clone-and-improve candidate ranking. Uses each app's most recent snapshot for
     rating/count and its stored update cadence for days-since-update.
     """
+    from src.analysis.estimates import monthly_installs
+
     now = datetime.utcnow()
     with session_scope() as session:
         apps = session.execute(
@@ -115,28 +120,41 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
         ).scalars().all()
         app_by_id = {a.id: a for a in apps}
 
-        # One query for all snapshots of these apps; keep the latest per app.
-        latest: Dict[int, tuple] = {}
+        # One query for all snapshots of these apps; keep the two latest per
+        # app - the pair gives review velocity -> CURRENT installs/month.
+        recent: Dict[int, list] = {}
         if app_by_id:
             snaps = session.execute(
                 select(
                     AppSnapshot.app_id,
                     AppSnapshot.rating_avg,
                     AppSnapshot.rating_count,
+                    AppSnapshot.captured_at,
                 )
                 .where(AppSnapshot.app_id.in_(list(app_by_id)))
                 .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
             ).all()
             for s in snaps:
-                if s.app_id not in latest:  # first seen = newest (desc order)
-                    latest[s.app_id] = (s.rating_avg, s.rating_count)
+                rows = recent.setdefault(s.app_id, [])
+                if len(rows) < 2:
+                    rows.append(s)
 
         records: List[Dict] = []
         for a in apps:
-            rating, ratings = latest.get(a.id, (None, None))
+            rows = recent.get(a.id, [])
+            rating, ratings = (rows[0].rating_avg, rows[0].rating_count) if rows else (None, None)
             days = None
             if a.current_version_release_date is not None:
                 days = (now - a.current_version_release_date).days
+            # Review velocity between the two latest snapshots -> installs/mo.
+            monthly_label = None
+            if len(rows) == 2 and rows[0].rating_count and rows[1].rating_count:
+                gap_days = (rows[0].captured_at - rows[1].captured_at).total_seconds() / 86400
+                if gap_days >= 0.5:
+                    daily = (rows[0].rating_count - rows[1].rating_count) / gap_days
+                    band = monthly_installs(daily)
+                    if band is not None:
+                        monthly_label = band.label
             records.append(
                 {
                     "app_id": a.id,
@@ -147,6 +165,7 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
                     "price": a.price,
                     "url": a.url or (f"https://apps.apple.com/app/id{a.id}"),
                     "days_since_update": days,
+                    "monthly_installs": monthly_label,
                 }
             )
     df = pd.DataFrame(records)
@@ -489,6 +508,67 @@ def localization_gap_df(genre_id: int, limit: int = 20) -> pd.DataFrame:
                 "num_languages": len(langs),
                 "english_only": langs == ["EN"],
                 "languages": ", ".join(langs[:12]) + ("…" if len(langs) > 12 else ""),
+            }
+        )
+    df = pd.DataFrame(records)
+    if not df.empty:
+        df = df.sort_values("ratings", ascending=False).reset_index(drop=True)
+    return df.head(limit)
+
+
+def young_winners_df(
+    genre_id: Optional[int] = None, max_age_months: int = 24, limit: int = 15
+) -> pd.DataFrame:
+    """Recently released apps that ALREADY rank in the top charts.
+
+    The strongest counter to "everything is taken": each row is a newcomer
+    that broke in. Their positioning shows what still works as an entry point.
+    """
+    from src.analysis.metrics import NEWCOMER_MAX_AGE_DAYS  # noqa: F401
+
+    now = datetime.utcnow()
+    cutoff = now - pd.Timedelta(days=max_age_months * 30)
+    with session_scope() as session:
+        stmt = (
+            select(
+                AppSnapshot.app_id,
+                AppSnapshot.rank,
+                AppSnapshot.rating_avg,
+                AppSnapshot.rating_count,
+                AppSnapshot.captured_at,
+                App.name,
+                App.developer,
+                App.release_date,
+                App.url,
+                Category.name.label("category"),
+            )
+            .join(App, App.id == AppSnapshot.app_id)
+            .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .where(App.release_date.isnot(None))
+            .where(App.release_date >= cutoff)
+            .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
+        )
+        if genre_id is not None:
+            stmt = stmt.where(AppSnapshot.genre_id == genre_id)
+        snaps = session.execute(stmt).all()
+
+    seen = set()
+    records: List[Dict] = []
+    for row in snaps:
+        if row.app_id in seen:
+            continue
+        seen.add(row.app_id)
+        age_months = max(int((now - row.release_date).days / 30), 0)
+        records.append(
+            {
+                "name": row.name,
+                "developer": row.developer,
+                "category": row.category,
+                "age_months": age_months,
+                "rank": row.rank,
+                "rating": round(row.rating_avg, 2) if row.rating_avg else None,
+                "ratings": row.rating_count or 0,
+                "url": row.url or f"https://apps.apple.com/app/id{row.app_id}",
             }
         )
     df = pd.DataFrame(records)

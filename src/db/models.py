@@ -103,6 +103,11 @@ class AppSnapshot(Base):
     app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), index=True)
     genre_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
     chart_type: Mapped[str] = mapped_column(String(48))
+    # Chart membership this run (an app can rank in several charts; chart_type
+    # keeps only the best-rank one). Grossing membership = the free
+    # "people actually PAY for this" monetization proxy.
+    in_free_chart: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    in_grossing_chart: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     rating_avg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rating_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -182,6 +187,13 @@ class CategoryScore(Base):
     num_declining_incumbents: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
+    # Monetization proxies: share of top-free apps that ALSO rank in
+    # top-grossing (freemium works here), and share of paid apps in the top.
+    monetization_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    paid_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Market fluidity: share of top apps released in the last ~2 years.
+    # High = newcomers break in; low = ossified, incumbent-locked market.
+    newcomer_share: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Normalised 0..1 component scores
     demand_score: Mapped[float] = mapped_column(Float, default=0.0)

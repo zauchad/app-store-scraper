@@ -184,6 +184,45 @@ METHODOLOGY = {
         "i kierunek funkcji (czy dodają AI? czy tylko „bug fixes\"?).\n\n"
         "**Dane źródłowe:** `releaseNotes` z iTunes Lookup.",
     ),
+    "monetization": (
+        "Monetyzacja (free→grossing)",
+        "**Co to jest:** jedyny darmowy dowód, że w niszy się PŁACI: odsetek "
+        "top-free apek, które są jednocześnie w top-**grossing** (ranking "
+        "przychodów).\n\n"
+        "**Wzór:** `|free ∩ grossing| ÷ |free|` na dziennym skanie obu chartów.\n\n"
+        "**Dane źródłowe:** charty RSS `topfreeapplications` + "
+        "`topgrossingapplications`. Wysoki odsetek = freemium/subskrypcje "
+        "działają; niski = uwaga bez portfeli.",
+    ),
+    "newcomer_share": (
+        "Świeżość rynku (nowi gracze)",
+        "**Co to jest:** czy rynek wciąż wpuszcza nowych — odsetek top-apek "
+        "wydanych w ciągu ostatnich **2 lat**.\n\n"
+        "**Dane źródłowe:** `releaseDate` z iTunes Lookup. Nisko (top ma 10-letnie "
+        "apki) = rynek zabetonowany; wysoko = udowodnione okno wejścia.",
+    ),
+    "young_winners": (
+        "Młodzi zwycięzcy",
+        "**Co to jest:** apki wydane <24 mies. temu, które już są w top-chartach "
+        "— żywy dowód, że w tej niszy da się dziś wejść, oraz katalog "
+        "działających strategii pozycjonowania.\n\n"
+        "**Dane źródłowe:** `releaseDate` + pozycje z top-chartów.",
+    ),
+    "geo_scan": (
+        "Geo-radar (arbitraż rynków)",
+        "**Co to jest:** porównanie konkurencji dla tej samej frazy w kilku "
+        "krajach (US, GB, DE, FR, PL). Nisza oblężona w US bywa otwarta w DE/PL "
+        "— ta sama apka, zlokalizowana, wchodzi taniej.\n\n"
+        "**Dane źródłowe:** iTunes Search API per storefront + trudność ASO "
+        "liczona tym samym wzorem co lokalnie.",
+    ),
+    "autocomplete_discovery": (
+        "Rozszerzanie fraz przez autocomplete",
+        "**Co to jest:** crawl podpowiedzi App Store (fraza + a–z) → long-tail "
+        "frazy, które użytkownicy **faktycznie wpisują** (w odróżnieniu od "
+        "propozycji AI, które trzeba dopiero zweryfikować).\n\n"
+        "**Dane źródłowe:** endpoint MZSearchHints (autocomplete Apple).",
+    ),
     "niche_checklist": (
         "Checklist weryfikacji niszy (5 pytań)",
         "**Co to jest:** 5 pytań-testów przed wejściem w niszę: 1) czy problem "
