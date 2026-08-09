@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
 
+    # --- Digest delivery (both optional; free) ---
+    slack_webhook_url: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    email_from: str = ""
+    email_to: str = ""  # comma-separated recipients
+
     # --- Review provider (MODE A fuel) ---
     # "rss"      -> free legacy feed (mostly empty in 2026, kept as fallback)
     # "rapidapi" -> hosted App Store reviews API (cheap, reliable, headless)

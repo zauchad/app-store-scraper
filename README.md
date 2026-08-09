@@ -326,6 +326,20 @@ Wygeneruj darmowy klucz na [aistudio.google.com/apikey](https://aistudio.google.
    zmiennych środowiskowych automatycznie — zero zmian w kodzie.
 3. Deploy. Dashboard czyta tę samą bazę Supabase, którą zasila cron.
 
+### 5. Digest na Slacka / e-mail (żeby system raportował do Ciebie)
+
+Cron po każdym skanie wysyła digest (`python run.py digest --send`) na
+skonfigurowane kanały — wystarczy dodać sekrety w GitHub Actions:
+
+* **Slack** (2 min): utwórz [Incoming Webhook](https://api.slack.com/messaging/webhooks)
+  -> sekret `SLACK_WEBHOOK_URL`.
+* **E-mail** (Gmail): włącz 2FA -> *App Passwords* -> sekrety `SMTP_HOST`
+  (`smtp.gmail.com`), `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_TO`
+  (wielu odbiorców po przecinku).
+
+Brak konfiguracji = krok jest pomijany bez błędu. Lokalnie przetestujesz przez
+`python run.py digest --send`.
+
 Kolejność uruchomienia: najpierw odpal raz workflow (żeby były dane), potem
 otwórz dashboard.
 

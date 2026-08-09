@@ -114,7 +114,7 @@ def build_digest(weeks: int = 4) -> str:
     return "\n".join(lines)
 
 
-def run_digest(weeks: int = 4) -> str:
+def run_digest(weeks: int = 4, send: bool = False) -> str:
     md = build_digest(weeks=weeks)
     out_dir = ROOT_DIR / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -125,4 +125,8 @@ def run_digest(weeks: int = 4) -> str:
     except OSError as exc:
         logger.warning("Could not write digest file: %s", exc)
     logger.info("=== WEEKLY DIGEST ===\n%s", md)
+    if send:
+        from src.pipeline.notify import send_digest
+
+        send_digest(md)
     return md

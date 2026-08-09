@@ -46,6 +46,8 @@ def main(argv=None) -> int:
 
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
     p_dig.add_argument("--weeks", type=int, default=4)
+    p_dig.add_argument("--send", action="store_true",
+                       help="Deliver to Slack/e-mail (whatever is configured)")
 
     p_kw = sub.add_parser("keywords", help="Micro-niche discovery below the top charts")
     p_kw.add_argument("--terms", type=str, default=None,
@@ -102,7 +104,7 @@ def main(argv=None) -> int:
     if args.command == "digest":
         from src.pipeline.digest import run_digest
 
-        run_digest(weeks=args.weeks)
+        run_digest(weeks=args.weeks, send=args.send)
         return 0
 
     if args.command == "keywords":

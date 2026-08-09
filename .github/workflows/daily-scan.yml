@@ -27,6 +27,14 @@ jobs:
       TOP_N_APPS: ${{ vars.TOP_N_APPS || '50' }}
       MARKETING_BUDGET_PLN: ${{ vars.MARKETING_BUDGET_PLN || '7500' }}
       DEEP_DIVE_TOP_K: ${{ vars.DEEP_DIVE_TOP_K || '5' }}
+      # Digest delivery (optional - configure whichever you use):
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,5 +58,5 @@ jobs:
       - name: Retention - downsample old snapshots (keep DB flat)
         run: python run.py retention
 
-      - name: Weekly digest - "what changed" brief
-        run: python run.py digest
+      - name: Weekly digest - "what changed" brief (+ Slack/e-mail delivery)
+        run: python run.py digest --send
