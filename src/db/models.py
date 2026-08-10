@@ -13,6 +13,7 @@ from typing import Optional
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -53,7 +54,8 @@ class App(Base):
 
     __tablename__ = "apps"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # Apple track id
+    # Apple track ids now exceed 32-bit INTEGER (e.g. 6_460_258_044).
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(String(512))
     developer: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     genre_id: Mapped[Optional[int]] = mapped_column(
@@ -72,7 +74,7 @@ class App(Base):
     )
     # Publisher identity -> developer-concentration analysis (1 firm w/ 10 apps
     # is a very different niche than 10 independent firms).
-    artist_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    artist_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     # All genres the app ranks in -> cross-category positioning ("styk kategorii").
     genre_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     # Supported languages -> localization-gap analysis (English-only = opening).
@@ -100,7 +102,7 @@ class AppSnapshot(Base):
     __tablename__ = "app_snapshots"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), index=True)
+    app_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("apps.id"), index=True)
     genre_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
     chart_type: Mapped[str] = mapped_column(String(48))
     # Chart membership this run (an app can rank in several charts; chart_type
@@ -137,7 +139,7 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # Apple review id
-    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id"), index=True)
+    app_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("apps.id"), index=True)
     author: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
