@@ -56,7 +56,13 @@ from src.reporting import (  # noqa: E402
     young_winners_df,
 )
 from dashboard.auth import render_auth_sidebar, render_payment_banner  # noqa: E402
-from dashboard.billing_ui import render_csv_gate, render_unlock_gate  # noqa: E402
+from dashboard.billing_ui import (  # noqa: E402
+    limit_radar_apps,
+    limit_radar_niches,
+    render_csv_gate,
+    render_radar_pro_upsell,
+    render_unlock_gate,
+)
 from src.billing.credits import niche_key as billing_niche_key  # noqa: E402
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
@@ -426,8 +432,9 @@ def page_radar() -> None:
             lambda x: f"{x * 100:+.0f}%" if pd.notna(x) else "n/d")
     else:
         disp["Wzrost 4-tyg."] = "n/d"
+    disp_show, hidden_niches = limit_radar_niches(disp)
     st.dataframe(
-        disp[["category", "opportunity_score", "Szansa", "Wzrost 4-tyg.",
+        disp_show[["category", "opportunity_score", "Szansa", "Wzrost 4-tyg.",
               "avg_rating_top", "Skala (life.)", "strong_incumbents",
               "mega_incumbents", "Contest.", "est_installs_month", "CPI", "Werdykt"]]
         .rename(columns={"category": "Kategoria", "opportunity_score": "Opportunity",
@@ -438,6 +445,7 @@ def page_radar() -> None:
         column_config={"Opportunity": st.column_config.ProgressColumn(
             "Opportunity", min_value=0, max_value=100, format="%.0f")},
     )
+    render_radar_pro_upsell(hidden=hidden_niches, kind="nisz w rankingu")
     st.caption("Przejdź do **Analiza**, by zobaczyć problemy użytkowników "
                "i kandydatów do ulepszenia w wybranej niszy.")
     cexp1, cexp2 = st.columns([1, 4])
@@ -460,11 +468,13 @@ def page_radar() -> None:
         if rising.empty:
             st.info("Brak danych o breakoutach — potrzebne min. 2 skany.")
         else:
-            st.dataframe(rising.rename(columns={
+            rising_show, hidden_r = limit_radar_apps(rising)
+            st.dataframe(rising_show.rename(columns={
                 "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
                 "rank_now": "Pozycja teraz", "rank_prev": "Poprzednio",
                 "rank_delta": "Skok (↑)", "rating_count": "Liczba ocen"}),
                 width="stretch", hide_index=True)
+            render_radar_pro_upsell(hidden=hidden_r, kind="breakoutów")
     with m2:
         st.markdown("#### 📉 Spadki jakości — świeże luki")
         st.caption("Silne apki, których średnia ocena spada między skanami. "
@@ -473,11 +483,13 @@ def page_radar() -> None:
         if movers.empty:
             st.info("Brak wykrytych spadków ocen (potrzebne min. 2 skany).")
         else:
-            st.dataframe(movers.rename(columns={
+            movers_show, hidden_m = limit_radar_apps(movers)
+            st.dataframe(movers_show.rename(columns={
                 "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
                 "rating_now": "Ocena teraz", "rating_prev": "Poprzednio",
                 "rating_drop": "Spadek (★)", "rating_count": "Liczba ocen"}),
                 width="stretch", hide_index=True)
+            render_radar_pro_upsell(hidden=hidden_m, kind="spadków jakości")
 
     dec_all = declining_apps_df(country=cc)
     if not dec_all.empty:
@@ -486,12 +498,14 @@ def page_radar() -> None:
                     "odwracają się TERAZ")
         st.caption("Porównanie oceny bieżącej wersji z oceną lifetime (iTunes "
                    "Lookup) — świeża luka widoczna już po jednym skanie.")
-        st.dataframe(dec_all.rename(columns={
+        dec_show, hidden_d = limit_radar_apps(dec_all)
+        st.dataframe(dec_show.rename(columns={
             "name": "Aplikacja", "developer": "Wydawca", "category": "Kategoria",
             "rating_lifetime": "Ocena lifetime",
             "rating_current_version": "Ocena bieżącej wersji",
             "delta": "Spadek (★)", "rating_count": "Liczba ocen"}),
             width="stretch", hide_index=True)
+        render_radar_pro_upsell(hidden=hidden_d, kind="psujących się apek")
         ui.how_button(["declining"], key="radar_how_declining")
 
 

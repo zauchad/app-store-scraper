@@ -7,11 +7,50 @@ from dashboard.auth import current_user, is_logged_in
 from src.billing.credits import (
     CREDIT_COST_NICHE_UNLOCK,
     can_export_csv,
+    has_pro_access,
     is_niche_unlocked,
     monetization_active,
     unlock_niche,
 )
 from src.config import settings
+
+RADAR_FREE_APP_ROWS = 3
+RADAR_FREE_NICHE_ROWS = 5
+
+
+def _pro_access() -> bool:
+    user = current_user()
+    return has_pro_access(user.id if user else None)
+
+
+def limit_radar_apps(df, *, limit: int = RADAR_FREE_APP_ROWS):
+    """Return (visible_df, hidden_count) for Radar app-name tables."""
+    if _pro_access() or df is None or getattr(df, "empty", True):
+        return df, 0
+    hidden = max(0, len(df) - limit)
+    return df.head(limit), hidden
+
+
+def limit_radar_niches(df, *, limit: int = RADAR_FREE_NICHE_ROWS):
+    """Return (visible_df, hidden_count) for the category decision table."""
+    if _pro_access() or df is None or getattr(df, "empty", True):
+        return df, 0
+    hidden = max(0, len(df) - limit)
+    return df.head(limit), hidden
+
+
+def render_radar_pro_upsell(*, hidden: int, kind: str = "aplikacji") -> None:
+    if hidden <= 0 or _pro_access():
+        return
+    st.caption(
+        f"🔒 **+{hidden}** więcej {kind} w planie **Pro** ($39/mies.) — "
+        "pełne nazwy, deweloperzy, CSV i 15 kredytów/mies."
+    )
+    user = current_user()
+    if user is None and monetization_active():
+        st.caption("Zaloguj się w panelu bocznym, aby wykupić Pro.")
+    elif user and not has_pro_access(user.id):
+        render_checkout_links()
 
 
 def _checkout_url(base: str, user_id: str) -> str:

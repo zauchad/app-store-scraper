@@ -215,10 +215,14 @@ def unlock_niche(user_id: str, key: str, *, cost: int = CREDIT_COST_NICHE_UNLOCK
         return user
 
 
-def can_export_csv(user_id: Optional[str]) -> bool:
+def has_pro_access(user_id: Optional[str]) -> bool:
     if not monetization_active():
         return True
     if not user_id:
         return False
     user = get_user(user_id)
     return user is not None and user.plan == PRO_PLAN
+
+
+def can_export_csv(user_id: Optional[str]) -> bool:
+    return has_pro_access(user_id)
