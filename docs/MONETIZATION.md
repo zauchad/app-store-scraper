@@ -228,7 +228,7 @@ python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subsc
 
 ## Next steps (Phase 1 polish)
 
-- Automated billing tests
+Phase 1 monetization complete. Optional follow-ups: admin credit grants, usage analytics.
 
 ---
 

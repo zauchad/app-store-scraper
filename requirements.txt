@@ -24,6 +24,9 @@ supabase>=2.4
 fastapi>=0.110
 uvicorn>=0.27
 
+# Tests
+pytest>=8.0
+
 # Optional - Apple Ads search-popularity provider (VOLUME_PROVIDER=asa):
 # PyJWT>=2.8
 # cryptography>=42

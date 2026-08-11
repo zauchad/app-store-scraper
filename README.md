@@ -424,4 +424,5 @@ Szybka walidacja konfiguracji:
 ```bash
 python run.py billing-check --strict
 python run.py billing-check --simulate-webhook --user-id YOUR_SUPABASE_UUID
+pytest tests/ -v
 ```
