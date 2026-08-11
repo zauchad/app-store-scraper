@@ -95,10 +95,10 @@ class GeminiClient:
         self._clients: Dict[int, Any] = {}
         self._spent: set = set()  # indices whose daily quota is exhausted
         self._idx = 0
-        # "Thinking" models (2.5+) can return all output as thought parts, leaving
-        # empty text -> broken JSON. Disable thinking for deterministic JSON, but
-        # fall back gracefully if the model rejects the field.
-        self._thinking_off = True
+        # gemini-flash-latest rejects thinking_config(thinking_budget=0) with a
+        # generic 400 INVALID_ARGUMENT, so we omit it by default. Some thinking
+        # models still return thought parts alongside JSON; callers parse text only.
+        self._use_thinking_config = False
 
     def _client_for(self, idx: int):
         if idx not in self._clients:
@@ -119,11 +119,11 @@ class GeminiClient:
             "response_mime_type": "application/json",
             "temperature": 0.3,
         }
-        if self._thinking_off:
+        if self._use_thinking_config:
             try:
                 kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
             except Exception:  # pragma: no cover - SDK too old for ThinkingConfig
-                self._thinking_off = False
+                self._use_thinking_config = False
         return types.GenerateContentConfig(**kwargs)
 
     def generate_json(self, prompt: str, system: Optional[str] = None) -> Dict[str, Any]:
@@ -168,10 +168,13 @@ class GeminiClient:
                 return _safe_json_loads((resp.text or "").strip())
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc)
-                # Model rejects thinking_config -> disable it and retry immediately.
-                if self._thinking_off and "thinking" in msg.lower():
-                    logger.info("Model rejects thinking_config; disabling it.")
-                    self._thinking_off = False
+                # Model rejects thinking_config (often a generic 400 on flash-latest).
+                if self._use_thinking_config and (
+                    "thinking" in msg.lower()
+                    or ("400" in msg and "INVALID_ARGUMENT" in msg)
+                ):
+                    logger.info("Model rejects thinking_config; omitting it.")
+                    self._use_thinking_config = False
                     continue
                 is_429 = "429" in msg or "RESOURCE_EXHAUSTED" in msg
                 if is_429 and _is_daily_quota(msg):
