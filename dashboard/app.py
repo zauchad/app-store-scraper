@@ -55,6 +55,9 @@ from src.reporting import (  # noqa: E402
     rising_apps_df,
     young_winners_df,
 )
+from dashboard.auth import render_auth_sidebar  # noqa: E402
+from dashboard.billing_ui import render_csv_gate, render_unlock_gate  # noqa: E402
+from src.billing.credits import niche_key as billing_niche_key  # noqa: E402
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
 from src.scraper.storefronts import STOREFRONTS  # noqa: E402
@@ -334,6 +337,8 @@ def render_sidebar() -> None:
                 "Wszędzie kliknij **ℹ️ Na jakich danych?**, by zobaczyć źródła."
             )
 
+        render_auth_sidebar()
+
 
 # =========================================================================== #
 #  PAGE: Opportunity Radar
@@ -436,10 +441,11 @@ def page_radar() -> None:
     st.caption("Przejdź do **Analiza**, by zobaczyć problemy użytkowników "
                "i kandydatów do ulepszenia w wybranej niszy.")
     cexp1, cexp2 = st.columns([1, 4])
-    cexp1.download_button(
-        "⬇️ Eksport CSV", data=disp.to_csv(index=False).encode("utf-8"),
-        file_name="radar-nisz.csv", mime="text/csv", key="radar_csv",
-    )
+    if render_csv_gate():
+        cexp1.download_button(
+            "⬇️ Eksport CSV", data=disp.to_csv(index=False).encode("utf-8"),
+            file_name="radar-nisz.csv", mime="text/csv", key="radar_csv",
+        )
     with cexp2:
         ui.how_button(["opportunity_score", "growth", "installs", "contestability",
                        "cpi", "verdict"], key="radar_how_table")
@@ -611,6 +617,10 @@ def page_deep() -> None:
     typ_band = installs_label(row.get("median_rating_count"))
     st.caption(f"📦 **Skala rynku (heurystyka):** typowa apka to **{typ_band}** "
                f"instalacji (lifetime), szacowane rzędem wielkości z liczby ocen.")
+
+    nk = billing_niche_key(kind="category", country=cc, identifier=genre_id)
+    if not render_unlock_gate(niche_key=nk, niche_label=choice):
+        return
 
     st.divider()
     left, right = st.columns([2, 3])
@@ -1141,10 +1151,11 @@ def page_micro() -> None:
     st.caption("💡 Sweet spot ASO: **wysoki Popyt wysz. + niska Trudność** "
                "(dużo szukają, słabi konkurenci do wyprzedzenia).")
     ce1, ce2 = st.columns([1, 4])
-    ce1.download_button(
-        "⬇️ Eksport CSV", data=kdisp[view_cols].to_csv(index=False).encode("utf-8"),
-        file_name="mikro-nisze.csv", mime="text/csv", key="kw_csv",
-    )
+    if render_csv_gate():
+        ce1.download_button(
+            "⬇️ Eksport CSV", data=kdisp[view_cols].to_csv(index=False).encode("utf-8"),
+            file_name="mikro-nisze.csv", mime="text/csv", key="kw_csv",
+        )
     with ce2:
         ui.how_button(["opportunity_score", "search_interest", "difficulty",
                        "installs", "cpi", "verdict"], key="kw_how_table")

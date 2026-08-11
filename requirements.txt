@@ -19,6 +19,11 @@ streamlit>=1.33
 plotly>=5.20
 pandas>=2.1
 
+# Auth + billing webhooks (Phase 1 monetization)
+supabase>=2.4
+fastapi>=0.110
+uvicorn>=0.27
+
 # Optional - Apple Ads search-popularity provider (VOLUME_PROVIDER=asa):
 # PyJWT>=2.8
 # cryptography>=42

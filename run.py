@@ -11,6 +11,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from src.db.session import init_db
@@ -49,6 +50,8 @@ def main(argv=None) -> int:
     p_ret.add_argument("--daily-days", type=int, default=None)
     p_ret.add_argument("--force", action="store_true",
                        help="Run even if RETENTION_ENABLED is false")
+
+    sub.add_parser("webhook-server", help="Lemon Squeezy billing webhook (FastAPI)")
 
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
     p_dig.add_argument("--weeks", type=int, default=4)
@@ -105,6 +108,17 @@ def main(argv=None) -> int:
         from src.pipeline.retention import run_retention
 
         run_retention(daily_days=args.daily_days, force=args.force)
+        return 0
+
+    if args.command == "webhook-server":
+        import uvicorn
+
+        uvicorn.run(
+            "billing.webhook_server:app",
+            host="0.0.0.0",
+            port=int(os.environ.get("PORT", "8080")),
+            reload=False,
+        )
         return 0
 
     if args.command == "digest":

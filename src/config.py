@@ -106,6 +106,21 @@ class Settings(BaseSettings):
     discover_top_categories: int = 5
     discover_keywords_per_category: int = 12
 
+    # --- Monetization (Phase 1) -----------------------------------------------
+    monetization_enabled: bool = False
+    signup_bonus_credits: int = 0
+    pro_monthly_credits: int = 15
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    lemonsqueezy_webhook_secret: str = ""
+    lemonsqueezy_store_id: str = ""
+    lemonsqueezy_variant_1_credit: str = ""
+    lemonsqueezy_variant_5_credits: str = ""
+    lemonsqueezy_variant_pro: str = ""
+    lemonsqueezy_checkout_1_credit: str = ""
+    lemonsqueezy_checkout_5_credits: str = ""
+    lemonsqueezy_checkout_pro: str = ""
+
     # --- Retention ---
     # OFF by default: keep ALL raw daily snapshots indefinitely. Flip to True
     # only if you want to downsample old snapshots to keep the DB flat.
@@ -160,6 +175,16 @@ class Settings(BaseSettings):
     @property
     def llm_enabled(self) -> bool:
         return bool(self.gemini_key_list)
+
+    @property
+    def auth_enabled(self) -> bool:
+        return self.monetization_enabled and bool(
+            self.supabase_url.strip() and self.supabase_anon_key.strip()
+        )
+
+    @property
+    def billing_configured(self) -> bool:
+        return bool(self.lemonsqueezy_webhook_secret.strip())
 
 
 @lru_cache(maxsize=1)

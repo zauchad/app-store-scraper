@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -306,3 +307,61 @@ class CategoryInsight(Base):
     pain_points: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     missing_features: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     raw_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+# --------------------------------------------------------------------------- #
+#  Monetization (Phase 1: credits + niche unlocks)
+# --------------------------------------------------------------------------- #
+
+
+class User(Base):
+    """App user synced from Supabase Auth on first login."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    plan: Mapped[str] = mapped_column(String(16), default="free")
+    credits_balance: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), onupdate=func.now()
+    )
+
+
+class CreditLedger(Base):
+    """Immutable credit movements (purchases, unlocks, subscription grants)."""
+
+    __tablename__ = "credit_ledger"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    delta: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(64))
+    reference_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), index=True
+    )
+
+
+class UnlockedNiche(Base):
+    """Niches a user paid to unlock (1 credit, permanent access)."""
+
+    __tablename__ = "unlocked_niches"
+    __table_args__ = (UniqueConstraint("user_id", "niche_key", name="uq_user_niche"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    niche_key: Mapped[str] = mapped_column(String(128), index=True)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+
+
+class WebhookEvent(Base):
+    """Processed payment webhooks — idempotency guard for Lemon Squeezy."""
+
+    __tablename__ = "webhook_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    event_name: Mapped[str] = mapped_column(String(64))
+    processed_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
