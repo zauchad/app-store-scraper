@@ -7,13 +7,24 @@ from typing import Any, Optional
 
 from sqlalchemy import select
 
-from src.billing.credits import PRO_PLAN, ensure_user, grant_credits
+from src.billing.credits import (
+    PRO_PLAN,
+    downgrade_from_pro,
+    ensure_user,
+    grant_credits,
+    set_user_plan,
+)
 from src.config import settings
 from src.db.models import WebhookEvent
 from src.db.session import session_scope
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+PAYMENT_EVENTS = frozenset({"order_created", "subscription_payment_success"})
+PRO_ACTIVATE_EVENTS = frozenset({"subscription_created", "subscription_resumed"})
+PRO_DOWNGRADE_EVENTS = frozenset({"subscription_expired"})
+PRO_CANCEL_EVENTS = frozenset({"subscription_cancelled"})
 
 
 def verify_signature(raw_body: bytes, signature: str) -> bool:
@@ -31,7 +42,6 @@ def _event_id(payload: dict[str, Any]) -> str:
 
 
 def _custom_data(payload: dict[str, Any]) -> dict[str, Any]:
-    # Lemon Squeezy puts checkout custom fields on meta.custom_data (not data.attributes).
     meta = payload.get("meta") or {}
     custom = meta.get("custom_data") or {}
     if isinstance(custom, dict):
@@ -77,6 +87,32 @@ def _credits_from_custom(custom: dict[str, Any]) -> tuple[int, Optional[str]]:
     return 0, None
 
 
+def _is_pro_variant(variant_id: str) -> bool:
+    pro_vid = settings.lemonsqueezy_variant_pro.strip()
+    return bool(pro_vid and str(variant_id) == pro_vid)
+
+
+def _mark_processed(event_id: str, event_name: str) -> None:
+    with session_scope() as session:
+        session.add(WebhookEvent(event_id=event_id, event_name=event_name))
+
+
+def _is_duplicate(event_id: str) -> bool:
+    with session_scope() as session:
+        return (
+            session.execute(
+                select(WebhookEvent.id).where(WebhookEvent.event_id == event_id)
+            ).scalar_one_or_none()
+            is not None
+        )
+
+
+def _resolve_user(custom: dict[str, Any], payload: dict[str, Any]) -> tuple[str, str]:
+    user_id = str(custom.get("user_id") or "").strip()
+    email = _user_email(payload) or f"{user_id}@checkout.local"
+    return user_id, email
+
+
 def handle_webhook(payload: dict[str, Any]) -> dict[str, Any]:
     """Process a Lemon Squeezy webhook payload. Idempotent by event id."""
     meta = payload.get("meta") or {}
@@ -85,49 +121,84 @@ def handle_webhook(payload: dict[str, Any]) -> dict[str, Any]:
     if not eid or eid.endswith(":None"):
         return {"ok": False, "error": "missing event id"}
 
-    with session_scope() as session:
-        seen = session.execute(
-            select(WebhookEvent.id).where(WebhookEvent.event_id == eid)
-        ).scalar_one_or_none()
-        if seen:
-            return {"ok": True, "duplicate": True}
+    if _is_duplicate(eid):
+        return {"ok": True, "duplicate": True}
 
-        credits, plan = 0, None
-        custom = _custom_data(payload)
-        user_id = str(custom.get("user_id") or "").strip()
-        email = _user_email(payload)
+    custom = _custom_data(payload)
 
-        if event_name in ("order_created", "subscription_payment_success"):
-            variant_id = _variant_id(payload)
-            credits, plan = _credits_for_variant(variant_id)
-            if credits <= 0:
-                credits, plan = _credits_from_custom(custom)
+    # --- Subscription ended → revoke Pro (CSV export), keep credits & unlocks ---
+    if event_name in PRO_DOWNGRADE_EVENTS:
+        user_id, email = _resolve_user(custom, payload)
+        if not user_id:
+            return {"ok": False, "error": "missing user_id in custom_data"}
+        _mark_processed(eid, event_name)
+        ensure_user(user_id, email)
+        downgrade_from_pro(user_id, event_name, reference_id=eid)
+        logger.info("Downgraded Pro for user %s (%s)", user_id, event_name)
+        return {"ok": True, "action": "downgrade", "user_id": user_id}
+
+    # --- Cancelled but still active until period end — do not downgrade yet ---
+    if event_name in PRO_CANCEL_EVENTS:
+        user_id, _ = _resolve_user(custom, payload)
+        if not user_id:
+            return {"ok": False, "error": "missing user_id in custom_data"}
+        _mark_processed(eid, event_name)
+        logger.info("Subscription cancelled for user %s (access until period ends)", user_id)
+        return {
+            "ok": True,
+            "action": "cancelled",
+            "user_id": user_id,
+            "note": "Pro access continues until subscription_expired",
+        }
+
+    # --- New / resumed Pro subscription → enable CSV before first renewal payment ---
+    if event_name in PRO_ACTIVATE_EVENTS:
+        user_id, email = _resolve_user(custom, payload)
+        if not user_id:
+            return {"ok": False, "error": "missing user_id in custom_data"}
+        variant_id = _variant_id(payload)
+        _, plan = _credits_for_variant(variant_id)
+        if str(custom.get("plan") or "") == PRO_PLAN:
+            plan = PRO_PLAN
+        _mark_processed(eid, event_name)
+        ensure_user(user_id, email)
+        if plan == PRO_PLAN or _is_pro_variant(variant_id):
+            set_user_plan(user_id, PRO_PLAN, reason=event_name, reference_id=eid)
+            return {"ok": True, "action": "activate_pro", "user_id": user_id}
+        return {"ok": True, "ignored": True, "event": event_name}
+
+    # --- One-off orders + subscription renewals → grant credits ---
+    if event_name in PAYMENT_EVENTS:
+        user_id, email = _resolve_user(custom, payload)
+        variant_id = _variant_id(payload)
+        credits, plan = _credits_for_variant(variant_id)
+        if credits <= 0:
+            credits, plan = _credits_from_custom(custom)
 
         if credits <= 0:
-            session.add(WebhookEvent(event_id=eid, event_name=event_name))
+            _mark_processed(eid, event_name)
             return {"ok": True, "ignored": True, "event": event_name}
 
         if not user_id:
             return {"ok": False, "error": "missing user_id in custom_data"}
 
-        if not email:
-            email = f"{user_id}@checkout.local"
+        _mark_processed(eid, event_name)
+        ensure_user(user_id, email)
+        grant_credits(
+            user_id,
+            credits,
+            f"lemonsqueezy:{event_name}",
+            reference_id=eid,
+            plan=plan,
+        )
+        logger.info(
+            "Granted %d credits to %s (%s) from %s",
+            credits,
+            user_id,
+            plan or "one-off",
+            event_name,
+        )
+        return {"ok": True, "credits": credits, "user_id": user_id, "plan": plan}
 
-        session.add(WebhookEvent(event_id=eid, event_name=event_name))
-
-    ensure_user(user_id, email)
-    grant_credits(
-        user_id,
-        credits,
-        f"lemonsqueezy:{event_name}",
-        reference_id=eid,
-        plan=plan,
-    )
-    logger.info(
-        "Granted %d credits to %s (%s) from %s",
-        credits,
-        user_id,
-        plan or "one-off",
-        event_name,
-    )
-    return {"ok": True, "credits": credits, "user_id": user_id, "plan": plan}
+    _mark_processed(eid, event_name)
+    return {"ok": True, "ignored": True, "event": event_name}

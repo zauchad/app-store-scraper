@@ -12,6 +12,7 @@ from src.db.models import User
 _SESSION_USER = "auth_user"
 _SESSION_ACCESS = "auth_access_token"
 _SESSION_REFRESH = "auth_refresh_token"
+_PAYMENT_NOTICE = "billing_payment_notice"
 
 
 def _supabase_client():
@@ -58,9 +59,50 @@ def _store_session(response: Any) -> User:
     return ensure_user(user_id, email)
 
 
+def init_auth() -> None:
+    """Restore Supabase session from refresh token (long-lived browser tab)."""
+    if not monetization_active() or not settings.auth_enabled:
+        return
+    if st.session_state.get(_SESSION_USER):
+        return
+    refresh = st.session_state.get(_SESSION_REFRESH)
+    if not refresh:
+        return
+    try:
+        client = _supabase_client()
+        resp = client.auth.refresh_session(refresh)
+        if resp.session:
+            _store_session(resp)
+    except Exception:  # noqa: BLE001
+        logout()
+
+
+def render_payment_banner() -> None:
+    """Show notice after Lemon Squeezy redirect (?payment=success)."""
+    if not monetization_active():
+        return
+    if st.session_state.get(_PAYMENT_NOTICE):
+        return
+    status = st.query_params.get("payment")
+    if status == "success":
+        st.session_state[_PAYMENT_NOTICE] = True
+        st.success(
+            "✅ Płatność przyjęta! Kredyty pojawią się w ciągu ~30 s "
+            "(webhook). Kliknij **Odśwież saldo** w panelu bocznym, "
+            "jeśli saldo się nie zaktualizowało.",
+            icon=":material/payments:",
+        )
+        try:
+            del st.query_params["payment"]
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def render_auth_sidebar() -> None:
     if not monetization_active():
         return
+
+    init_auth()
 
     st.divider()
     st.markdown("**Konto**")
@@ -78,6 +120,9 @@ def render_auth_sidebar() -> None:
         plan_label = "Pro" if user.plan == "pro" else "Free"
         st.markdown(f"**{user.email}**")
         st.caption(f"Plan: **{plan_label}** · Kredyty: **{user.credits_balance}**")
+        if st.button("Odśwież saldo", key="auth_refresh_balance", width="stretch"):
+            st.session_state.pop(_PAYMENT_NOTICE, None)
+            st.rerun()
         if st.button("Wyloguj", key="auth_logout", width="stretch"):
             logout()
             st.rerun()
@@ -100,6 +145,18 @@ def render_auth_sidebar() -> None:
                     st.rerun()
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Logowanie nie powiodło się: {exc}")
+        with st.expander("Zapomniałeś hasła?"):
+            reset_email = st.text_input("E-mail do resetu", key="auth_reset_email")
+            if st.button("Wyślij link resetujący", key="auth_reset_btn"):
+                if not reset_email.strip():
+                    st.error("Podaj e-mail.")
+                else:
+                    try:
+                        client = _supabase_client()
+                        client.auth.reset_password_for_email(reset_email.strip())
+                        st.info("Sprawdź skrzynkę — link do resetu hasła.")
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"Nie udało się wysłać linku: {exc}")
 
     with tab_up:
         email_up = st.text_input("E-mail", key="auth_signup_email")

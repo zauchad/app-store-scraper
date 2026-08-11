@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 CREDIT_COST_NICHE_UNLOCK = 1
 PRO_PLAN = "pro"
+FREE_PLAN = "free"
 
 
 def niche_key(*, kind: str, country: str, identifier: int | str) -> str:
@@ -93,6 +94,52 @@ def grant_credits(
             user.plan = plan
         session.flush()
         return user
+
+
+def set_user_plan(
+    user_id: str,
+    plan: str,
+    *,
+    reason: str = "plan_change",
+    reference_id: Optional[str] = None,
+) -> User:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            raise ValueError(f"unknown user {user_id}")
+        if user.plan != plan:
+            old_plan = user.plan
+            user.plan = plan
+            user.updated_at = datetime.utcnow()
+            logger.info(
+                "User %s plan %s -> %s (%s, ref=%s)",
+                user_id,
+                old_plan,
+                plan,
+                reason,
+                reference_id,
+            )
+        session.flush()
+        return user
+
+
+def downgrade_from_pro(
+    user_id: str,
+    reason: str,
+    *,
+    reference_id: Optional[str] = None,
+) -> User:
+    user = get_user(user_id)
+    if user is None:
+        raise ValueError(f"unknown user {user_id}")
+    if user.plan != PRO_PLAN:
+        return user
+    return set_user_plan(
+        user_id,
+        FREE_PLAN,
+        reason=reason,
+        reference_id=reference_id,
+    )
 
 
 def spend_credits(

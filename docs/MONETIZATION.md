@@ -57,7 +57,14 @@ In [Lemon Squeezy](https://app.lemonsqueezy.com/) create three products:
 | Niche pack | One-time | $49 | 5 credits |
 | Pro | Subscription (monthly) | $39/mo | 15 credits/mo + CSV export |
 
-For each variant, note the **Variant ID** (in product URL or API).
+For each product, set **Confirmation modal → Redirect URL** (optional) to your
+Streamlit app so users return after paying:
+
+```
+https://YOUR-APP.streamlit.app/?payment=success
+```
+
+The dashboard shows a “payment received, refresh balance” notice automatically.
 
 ### 2.2 Checkout links
 
@@ -120,9 +127,12 @@ Streamlit Cloud cannot receive inbound webhooks. Deploy the FastAPI app elsewher
 1. **Settings → Webhooks → Create webhook**
 2. **URL**: `https://your-app.up.railway.app/webhooks/lemon-squeezy`
 3. **Signing secret**: same string as `LEMONSQUEEZY_WEBHOOK_SECRET`
-4. **Events** (minimum):
+4. **Events** (register all of these):
    - `order_created`
+   - `subscription_created`
    - `subscription_payment_success`
+   - `subscription_cancelled`
+   - `subscription_expired`
 
 ### 3.3 Health check
 
@@ -199,7 +209,26 @@ Expected output: `✅ Billing configuration looks ready.`
 
 ```bash
 python run.py billing-check --simulate-webhook --user-id YOUR_SUPABASE_UUID
+python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subscription_created --variant pro
+python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subscription_expired
 ```
+
+---
+
+## Subscription lifecycle
+
+| Event | What happens |
+|-------|----------------|
+| `subscription_created` / `subscription_resumed` | Plan → **Pro** (CSV export enabled) |
+| `subscription_payment_success` | +15 credits/mo, plan stays **Pro** |
+| `subscription_cancelled` | No change — user keeps Pro until period ends |
+| `subscription_expired` | Plan → **Free** — CSV locked; credits & niche unlocks kept |
+
+---
+
+## Next steps (Phase 1 polish)
+
+- Tighter Radar free tier
 
 ---
 
@@ -211,14 +240,3 @@ python run.py billing-check --simulate-webhook --user-id YOUR_SUPABASE_UUID
 | **1 credit ($19)** | Full Analiza for one niche, forever |
 | **5 credits ($49)** | Five niche unlocks |
 | **Pro ($39/mo)** | 15 credits/mo + CSV export on Radar & Mikro-nisze |
-
----
-
-## Next steps (Phase 1 polish — not in this doc)
-
-- Subscription cancellation → downgrade Pro
-- Post-checkout “refresh credits” UX
-- Password reset flow
-- Tighter Radar free tier
-
-See main README roadmap.

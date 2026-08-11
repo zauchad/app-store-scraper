@@ -55,7 +55,7 @@ from src.reporting import (  # noqa: E402
     rising_apps_df,
     young_winners_df,
 )
-from dashboard.auth import render_auth_sidebar  # noqa: E402
+from dashboard.auth import render_auth_sidebar, render_payment_banner  # noqa: E402
 from dashboard.billing_ui import render_csv_gate, render_unlock_gate  # noqa: E402
 from src.billing.credits import niche_key as billing_niche_key  # noqa: E402
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
@@ -1313,6 +1313,7 @@ def page_digest() -> None:
 # --------------------------------------------------------------------------- #
 #  App shell — sidebar + native top navigation
 # --------------------------------------------------------------------------- #
+render_payment_banner()
 render_sidebar()
 
 nav = st.navigation(

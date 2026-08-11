@@ -74,7 +74,19 @@ def main(argv=None) -> int:
         "--variant",
         choices=["1", "5", "pro"],
         default="1",
-        help="Which product variant to simulate",
+        help="Which product variant to simulate (payment events)",
+    )
+    p_bill.add_argument(
+        "--event",
+        choices=[
+            "order_created",
+            "subscription_payment_success",
+            "subscription_created",
+            "subscription_cancelled",
+            "subscription_expired",
+        ],
+        default="order_created",
+        help="Webhook event to simulate",
     )
 
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
@@ -160,23 +172,22 @@ def main(argv=None) -> int:
                 "5": settings.lemonsqueezy_variant_5_credits or "999005",
                 "pro": settings.lemonsqueezy_variant_pro or "999039",
             }
-            custom: dict = {
-                "user_id": args.user_id,
-                "credits": credits_map[args.variant],
-            }
+            custom: dict = {"user_id": args.user_id}
             if args.variant == "pro":
                 custom["plan"] = "pro"
+            if args.event in ("order_created", "subscription_payment_success"):
+                custom["credits"] = credits_map[args.variant]
             sim_id = f"sim-{int(time.time())}"
             payload = {
                 "meta": {
-                    "event_name": "order_created",
+                    "event_name": args.event,
                     "custom_data": custom,
                 },
                 "data": {
                     "id": sim_id,
                     "attributes": {
                         "user_email": f"{args.user_id}@test.local",
-                        "first_order_item": {"variant_id": int(variant_map[args.variant])},
+                        "variant_id": int(variant_map[args.variant]),
                     },
                 },
             }
