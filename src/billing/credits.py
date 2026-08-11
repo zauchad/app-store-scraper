@@ -102,6 +102,30 @@ def grant_credits(
         return user
 
 
+def claw_back_credits(
+    user_id: str,
+    amount: int,
+    reason: str,
+    *,
+    reference_id: Optional[str] = None,
+) -> User:
+    """Remove up to `amount` credits (e.g. on refund). Does not go below zero."""
+    if amount <= 0:
+        user = get_user(user_id)
+        if user is None:
+            raise ValueError(f"unknown user {user_id}")
+        return user
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            raise ValueError(f"unknown user {user_id}")
+        claw = min(amount, user.credits_balance)
+        if claw > 0:
+            _apply_delta(session, user, -claw, reason, reference_id=reference_id)
+        session.flush()
+        return user
+
+
 def set_user_plan(
     user_id: str,
     plan: str,

@@ -89,6 +89,17 @@ def main(argv=None) -> int:
         help="Webhook event to simulate",
     )
 
+    p_grant = sub.add_parser("grant-credits", help="Admin: grant credits by user email")
+    p_grant.add_argument("--email", type=str, required=True)
+    p_grant.add_argument("--amount", type=int, required=True)
+    p_grant.add_argument("--reason", type=str, default="admin_grant")
+    p_grant.add_argument(
+        "--secret",
+        type=str,
+        default=None,
+        help="BILLING_ADMIN_SECRET (or set env BILLING_ADMIN_SECRET)",
+    )
+
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
     p_dig.add_argument("--weeks", type=int, default=4)
     p_dig.add_argument("--send", action="store_true",
@@ -198,6 +209,23 @@ def main(argv=None) -> int:
         res = run_billing_check(strict=args.strict)
         print(format_check_report(res))
         return 0 if res.ok else 1
+
+    if args.command == "grant-credits":
+        from src.billing.admin import grant_credits_admin
+
+        secret = args.secret or os.environ.get("BILLING_ADMIN_SECRET", "")
+        try:
+            balance = grant_credits_admin(
+                email=args.email,
+                amount=args.amount,
+                reason=args.reason,
+                admin_secret=secret,
+            )
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            return 1
+        print(f"Granted {args.amount} credits to {args.email}. New balance: {balance}")
+        return 0
 
     if args.command == "digest":
         from src.pipeline.digest import run_digest

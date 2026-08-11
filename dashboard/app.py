@@ -55,14 +55,23 @@ from src.reporting import (  # noqa: E402
     rising_apps_df,
     young_winners_df,
 )
+from dashboard.account_page import page_account  # noqa: E402
 from dashboard.auth import render_auth_sidebar, render_payment_banner  # noqa: E402
 from dashboard.billing_ui import (  # noqa: E402
+    is_content_unlocked,
     limit_radar_apps,
     limit_radar_niches,
     render_csv_gate,
     render_radar_pro_upsell,
     render_unlock_gate,
+    _locked_label,
 )
+from src.billing.usage import (  # noqa: E402
+    can_run_keyword_scan,
+    keyword_scans_remaining,
+    record_keyword_scan,
+)
+from dashboard.auth import current_user_id  # noqa: E402
 from src.billing.credits import niche_key as billing_niche_key  # noqa: E402
 from src.billing.credits import keyword_niche_key  # noqa: E402
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
@@ -544,6 +553,9 @@ def page_deep() -> None:
     choice = st.selectbox("Wybierz niszę", names, index=0, format_func=_fmt)
     row = df[df["category"] == choice].iloc[0]
     genre_id = int(row["genre_id"])
+    cc = report_country()
+    nk = billing_niche_key(kind="category", country=cc, identifier=genre_id)
+    full_access = is_content_unlocked(nk)
     level, expl = verdict(row)
 
     st.markdown(f"### {choice} &nbsp; {verdict_md(level, expl)}")
@@ -578,7 +590,8 @@ def page_deep() -> None:
     m1.metric("Opportunity", f"{row['opportunity_score']:.0f}/100",
               help="0–100. ⬆️ wyżej = lepiej. Łączny wskaźnik atrakcyjności "
                    "i zdobywalności niszy.")
-    m2.metric("Szansa sukcesu", pct(row["success_probability"]),
+    m2.metric("Szansa sukcesu",
+              pct(row["success_probability"]) if full_access else _locked_label(),
               help="⬆️ wyżej = lepiej. Szansa zdobycia przyczółka przy Twoim budżecie.")
     m3.metric("Śr. ocena konk.",
               f"{row['avg_rating_top']:.2f}" if row["avg_rating_top"] else "-",
@@ -590,7 +603,8 @@ def page_deep() -> None:
     m5.metric("Giganci (>3M)", num(row.get("mega_incumbents", 0)),
               help="Apki z >3 mln ocen — praktycznie nie do pobicia. "
                    "2+ = automatyczny SKIP. ⬇️ NIŻEJ = lepiej.")
-    m6.metric("Contestability", f"{row.get('contestability', 1):.2f}",
+    m6.metric("Contestability",
+              f"{row.get('contestability', 1):.2f}" if full_access else _locked_label(),
               help="0–1. Czy lean founder ma realną szansę wejść. "
                    "⬆️ WYŻEJ = lepiej.")
     ui.how_button(["opportunity_score", "success_probability", "quality_gap",
@@ -602,18 +616,16 @@ def page_deep() -> None:
     paid = row.get("paid_share")
     newc = row.get("newcomer_share")
     b1, b2, b3 = st.columns(3)
-    b1.metric("Monetyzacja (free→grossing)",
-              pct(mon) if pd.notna(mon) else "n/d",
-              help="Odsetek top-free apek, które są TAKŻE w top-grossing = "
-                   "użytkownicy realnie płacą w tej niszy. ⬆️ WYŻEJ = łatwiej "
-                   "sprzedać subskrypcję.")
-    b2.metric("Apki płatne w top", pct(paid) if pd.notna(paid) else "n/d",
-              help="Odsetek apek z ceną > 0. Sygnał gotowości do płacenia "
-                   "z góry.")
-    b3.metric("Świeżość rynku", pct(newc) if pd.notna(newc) else "n/d",
-              help="Odsetek top-apek wydanych w ciągu ostatnich 2 lat. "
-                   "⬆️ WYŻEJ = nowi gracze wciąż się przebijają (rynek "
-                   "niezabetonowany).")
+    if full_access:
+        b1.metric("Monetyzacja (free→grossing)",
+                  pct(mon) if pd.notna(mon) else "n/d",
+                  help="Odsetek top-free apek, które są TAKŻE w top-grossing.")
+        b2.metric("Apki płatne w top", pct(paid) if pd.notna(paid) else "n/d")
+        b3.metric("Świeżość rynku", pct(newc) if pd.notna(newc) else "n/d")
+    else:
+        b1.metric("Monetyzacja (free→grossing)", _locked_label())
+        b2.metric("Apki płatne w top", _locked_label())
+        b3.metric("Świeżość rynku", _locked_label())
     ui.how_button(["monetization", "newcomer_share"], key="dd_how_monet")
 
     stale = int(row.get("stale_incumbents", 0) or 0)
@@ -1066,6 +1078,15 @@ def page_micro() -> None:
         "Kliknij wiersz w tabeli, aby zobaczyć szczegóły.",
     )
 
+    if settings.monetization_enabled:
+        rem = keyword_scans_remaining(current_user_id())
+        if rem is not None:
+            st.caption(
+                f"Plan Free: **{rem}** skanów mikro-nisz pozostało dziś "
+                f"(limit {settings.free_daily_keyword_scans}/dzień). "
+                "Generator AI wymaga **Pro**."
+            )
+
     enabled = [s for s in CATEGORY_SEEDS if s.enabled]
     genre_options = {"— dowolna —": None}
     genre_options.update({s.name: s.genre_id for s in enabled})
@@ -1085,7 +1106,7 @@ def page_micro() -> None:
                                   placeholder="np. habit tracking for ADHD")
         cA, cB, cC = st.columns(3)
         gen = cA.checkbox("Wygeneruj kandydatów przez AI", value=False,
-                          help="Wymaga GEMINI_API_KEYS. AI zaproponuje mikro-nisze.")
+                          help="Wymaga planu Pro + GEMINI_API_KEYS.")
         expand = cB.checkbox("Rozszerz przez autocomplete Apple", value=False,
                              help="Crawluje podpowiedzi App Store (fraza + a–z): "
                                   "long-tail frazy, które ludzie FAKTYCZNIE "
@@ -1095,9 +1116,13 @@ def page_micro() -> None:
                                           width="stretch")
 
     if submitted:
+        uid = current_user_id()
         genre_id = genre_options[genre_name]
         terms = [t.strip() for t in terms_raw.replace("\n", ",").split(",") if t.strip()]
-        if gen and not settings.llm_enabled:
+        ok_scan, scan_msg = can_run_keyword_scan(uid, use_ai=gen)
+        if not ok_scan:
+            st.error(scan_msg)
+        elif gen and not settings.llm_enabled:
             st.warning("Generator AI wymaga GEMINI_API_KEYS. Podaj słowa ręcznie "
                        "albo skonfiguruj klucz.")
         elif not terms and not gen:
@@ -1120,6 +1145,8 @@ def page_micro() -> None:
                 try:
                     run_keyword_scan(terms=terms, theme=theme, genre_id=genre_id,
                                      generate=gen, n=n_kw)
+                    if uid:
+                        record_keyword_scan(uid)
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Analiza nie powiodła się: {exc}")
 
@@ -1338,13 +1365,16 @@ def page_digest() -> None:
 render_payment_banner()
 render_sidebar()
 
-nav = st.navigation(
-    [
-        st.Page(page_radar, title="Radar", icon=":material/radar:", default=True),
-        st.Page(page_deep, title="Analiza", icon=":material/biotech:"),
-        st.Page(page_micro, title="Mikro-nisze", icon=":material/target:"),
-        st.Page(page_digest, title="Zmiany", icon=":material/trending_up:"),
-    ],
-    position="top",
-)
+_nav_pages = [
+    st.Page(page_radar, title="Radar", icon=":material/radar:", default=True),
+    st.Page(page_deep, title="Analiza", icon=":material/biotech:"),
+    st.Page(page_micro, title="Mikro-nisze", icon=":material/target:"),
+    st.Page(page_digest, title="Zmiany", icon=":material/trending_up:"),
+]
+if settings.monetization_enabled:
+    _nav_pages.append(
+        st.Page(page_account, title="Konto", icon=":material/account_circle:")
+    )
+
+nav = st.navigation(_nav_pages, position="top")
 nav.run()

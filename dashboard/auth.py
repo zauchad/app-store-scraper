@@ -5,6 +5,11 @@ from typing import Any, Optional
 
 import streamlit as st
 
+from dashboard.auth_cookies import (
+    clear_auth_cookies,
+    read_refresh_from_cookies,
+    save_auth_cookies,
+)
 from src.billing.credits import ensure_user, get_user, monetization_active
 from src.config import settings
 from src.db.models import User
@@ -46,6 +51,7 @@ def is_logged_in() -> bool:
 def logout() -> None:
     for key in (_SESSION_USER, _SESSION_ACCESS, _SESSION_REFRESH):
         st.session_state.pop(key, None)
+    clear_auth_cookies()
 
 
 def _store_session(response: Any) -> User:
@@ -56,16 +62,18 @@ def _store_session(response: Any) -> User:
     st.session_state[_SESSION_USER] = user_id
     st.session_state[_SESSION_ACCESS] = session.access_token
     st.session_state[_SESSION_REFRESH] = session.refresh_token
+    save_auth_cookies(user_id, session.refresh_token or "")
     return ensure_user(user_id, email)
 
 
 def init_auth() -> None:
-    """Restore Supabase session from refresh token (long-lived browser tab)."""
+    """Restore session from cookie or in-tab refresh token."""
     if not monetization_active() or not settings.auth_enabled:
         return
     if st.session_state.get(_SESSION_USER):
         return
-    refresh = st.session_state.get(_SESSION_REFRESH)
+
+    refresh = st.session_state.get(_SESSION_REFRESH) or read_refresh_from_cookies()
     if not refresh:
         return
     try:
@@ -88,7 +96,7 @@ def render_payment_banner() -> None:
         st.session_state[_PAYMENT_NOTICE] = True
         st.success(
             "✅ Płatność przyjęta! Kredyty pojawią się w ciągu ~30 s "
-            "(webhook). Kliknij **Odśwież saldo** w panelu bocznym, "
+            "(webhook). Kliknij **Odśwież saldo** lub przejdź do **Konto**, "
             "jeśli saldo się nie zaktualizowało.",
             icon=":material/payments:",
         )
@@ -123,6 +131,9 @@ def render_auth_sidebar() -> None:
         if st.button("Odśwież saldo", key="auth_refresh_balance", width="stretch"):
             st.session_state.pop(_PAYMENT_NOTICE, None)
             st.rerun()
+        portal = settings.lemonsqueezy_customer_portal_url.strip()
+        if portal:
+            st.link_button("Portal klienta", portal, use_container_width=True)
         if st.button("Wyloguj", key="auth_logout", width="stretch"):
             logout()
             st.rerun()
@@ -159,6 +170,10 @@ def render_auth_sidebar() -> None:
                         st.error(f"Nie udało się wysłać linku: {exc}")
 
     with tab_up:
+        st.caption(
+            "Po rejestracji **potwierdź e-mail** (link z Supabase), "
+            "jeśli w projekcie włączona jest weryfikacja."
+        )
         email_up = st.text_input("E-mail", key="auth_signup_email")
         password_up = st.text_input("Hasło", type="password", key="auth_signup_pw")
         if st.button("Utwórz konto", key="auth_signup_btn", width="stretch"):
@@ -177,6 +192,25 @@ def render_auth_sidebar() -> None:
                         st.success("Konto utworzone!")
                         st.rerun()
                     else:
-                        st.info("Sprawdź skrzynkę — potwierdź e-mail, potem się zaloguj.")
+                        st.info(
+                            "Sprawdź skrzynkę — **potwierdź e-mail**, "
+                            "potem zaloguj się na zakładce Logowanie."
+                        )
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Rejestracja nie powiodła się: {exc}")
+
+    _render_legal_footer()
+
+
+def _render_legal_footer() -> None:
+    links = []
+    if settings.legal_terms_url.strip():
+        links.append(f"[Regulamin]({settings.legal_terms_url.strip()})")
+    if settings.legal_privacy_url.strip():
+        links.append(f"[Prywatność]({settings.legal_privacy_url.strip()})")
+    if settings.legal_refund_url.strip():
+        links.append(f"[Zwroty]({settings.legal_refund_url.strip()})")
+    if links:
+        st.caption(" · ".join(links))
+    else:
+        st.caption("Regulamin i zwroty: zakładka **Konto**.")

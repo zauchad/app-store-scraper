@@ -129,6 +129,7 @@ Streamlit Cloud cannot receive inbound webhooks. Deploy the FastAPI app elsewher
 3. **Signing secret**: same string as `LEMONSQUEEZY_WEBHOOK_SECRET`
 4. **Events** (register all of these):
    - `order_created`
+   - `order_refunded`
    - `subscription_created`
    - `subscription_payment_success`
    - `subscription_cancelled`
@@ -164,6 +165,10 @@ LEMONSQUEEZY_VARIANT_PRO = "123458"
 # Optional
 PRO_MONTHLY_CREDITS = "15"
 SIGNUP_BONUS_CREDITS = "0"
+FREE_DAILY_KEYWORD_SCANS = "3"
+SUPPORT_EMAIL = "hello@yourdomain.com"
+LEMONSQUEEZY_CUSTOMER_PORTAL_URL = "https://your-store.lemonsqueezy.com/billing"
+# BILLING_ADMIN_SECRET = "..."  # webhook server only, for grant-credits CLI
 ```
 
 Redeploy the Streamlit app after saving secrets.
@@ -228,7 +233,8 @@ python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subsc
 
 ## Next steps (Phase 1 polish)
 
-Phase 1 monetization complete. Optional follow-ups: admin credit grants, usage analytics.
+Phase 1 monetization complete. Production extras: cookie auth, Konto page, scan limits,
+refund webhooks, admin grant-credits, Slack alerts on webhook failures.
 
 ---
 

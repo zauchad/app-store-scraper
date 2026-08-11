@@ -120,6 +120,13 @@ class Settings(BaseSettings):
     lemonsqueezy_checkout_1_credit: str = ""
     lemonsqueezy_checkout_5_credits: str = ""
     lemonsqueezy_checkout_pro: str = ""
+    lemonsqueezy_customer_portal_url: str = ""
+    billing_admin_secret: str = ""
+    free_daily_keyword_scans: int = 3
+    support_email: str = ""
+    legal_terms_url: str = ""
+    legal_privacy_url: str = ""
+    legal_refund_url: str = ""
 
     # --- Retention ---
     # OFF by default: keep ALL raw daily snapshots indefinitely. Flip to True

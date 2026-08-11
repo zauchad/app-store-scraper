@@ -365,3 +365,29 @@ class WebhookEvent(Base):
     event_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     event_name: Mapped[str] = mapped_column(String(64))
     processed_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+
+
+class WebhookFailure(Base):
+    """Failed webhook processing — for support and monitoring."""
+
+    __tablename__ = "webhook_failures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_name: Mapped[str] = mapped_column(String(64), default="")
+    error_message: Mapped[str] = mapped_column(String(512))
+    payload_preview: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), index=True
+    )
+
+
+class DailyUsage(Base):
+    """Per-user daily quotas (keyword scans, etc.)."""
+
+    __tablename__ = "daily_usage"
+    __table_args__ = (UniqueConstraint("user_id", "usage_date", name="uq_user_usage_day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    usage_date: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
+    keyword_scans: Mapped[int] = mapped_column(Integer, default=0)

@@ -23,6 +23,7 @@ pandas>=2.1
 supabase>=2.4
 fastapi>=0.110
 uvicorn>=0.27
+extra-streamlit-components>=0.1.71
 
 # Tests
 pytest>=8.0

@@ -5,17 +5,18 @@ import hashlib
 import hmac
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from src.billing.credits import (
     PRO_PLAN,
+    claw_back_credits,
     downgrade_from_pro,
     ensure_user,
     grant_credits,
     set_user_plan,
 )
 from src.config import settings
-from src.db.models import WebhookEvent
+from src.db.models import CreditLedger, WebhookEvent
 from src.db.session import session_scope
 from src.logging_config import get_logger
 
@@ -25,6 +26,7 @@ PAYMENT_EVENTS = frozenset({"order_created", "subscription_payment_success"})
 PRO_ACTIVATE_EVENTS = frozenset({"subscription_created", "subscription_resumed"})
 PRO_DOWNGRADE_EVENTS = frozenset({"subscription_expired"})
 PRO_CANCEL_EVENTS = frozenset({"subscription_cancelled"})
+REFUND_EVENTS = frozenset({"order_refunded"})
 
 
 def verify_signature(raw_body: bytes, signature: str) -> bool:
@@ -166,6 +168,34 @@ def handle_webhook(payload: dict[str, Any]) -> dict[str, Any]:
             set_user_plan(user_id, PRO_PLAN, reason=event_name, reference_id=eid)
             return {"ok": True, "action": "activate_pro", "user_id": user_id}
         return {"ok": True, "ignored": True, "event": event_name}
+
+    # --- Refunds → claw back credits granted for this order ---
+    if event_name in REFUND_EVENTS:
+        user_id, email = _resolve_user(custom, payload)
+        order_id = str((payload.get("data") or {}).get("id") or "")
+        orig_ref = f"order_created:{order_id}"
+        claw_total = 0
+        if user_id and order_id:
+            with session_scope() as session:
+                claw_total = session.execute(
+                    select(func.coalesce(func.sum(CreditLedger.delta), 0)).where(
+                        CreditLedger.user_id == user_id,
+                        CreditLedger.reference_id == orig_ref,
+                        CreditLedger.delta > 0,
+                    )
+                ).scalar_one()
+                claw_total = int(claw_total or 0)
+        _mark_processed(eid, event_name)
+        if user_id and claw_total > 0:
+            ensure_user(user_id, email)
+            claw_back_credits(
+                user_id,
+                claw_total,
+                "lemonsqueezy:order_refunded",
+                reference_id=eid,
+            )
+            logger.info("Clawed back %d credits from %s (refund)", claw_total, user_id)
+        return {"ok": True, "action": "refund", "clawed_back": claw_total, "user_id": user_id}
 
     # --- One-off orders + subscription renewals → grant credits ---
     if event_name in PAYMENT_EVENTS:

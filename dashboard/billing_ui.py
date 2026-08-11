@@ -23,6 +23,20 @@ def _pro_access() -> bool:
     return has_pro_access(user.id if user else None)
 
 
+def is_content_unlocked(niche_key: str) -> bool:
+    """Whether full paid content for this niche key is accessible."""
+    if not monetization_active():
+        return True
+    user = current_user()
+    if user is None:
+        return False
+    return is_niche_unlocked(user.id, niche_key)
+
+
+def _locked_label() -> str:
+    return "🔒 odblokuj"
+
+
 def limit_radar_apps(df, *, limit: int = RADAR_FREE_APP_ROWS):
     """Return (visible_df, hidden_count) for Radar app-name tables."""
     if _pro_access() or df is None or getattr(df, "empty", True):
