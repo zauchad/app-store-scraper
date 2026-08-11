@@ -27,6 +27,12 @@ def main(argv=None) -> int:
 
     p_scan = sub.add_parser("scan", help="Level 1: scrape + Opportunity Score")
     p_scan.add_argument("--no-reviews", action="store_true", help="Skip review fetch")
+    p_scan.add_argument(
+        "--country",
+        type=str,
+        default=None,
+        help="Storefront code (e.g. us, pl). Defaults to STORE_COUNTRY.",
+    )
 
     p_deep = sub.add_parser("deep-dive", help="Level 2: LLM synthesis")
     p_deep.add_argument("--top-k", type=int, default=None)
@@ -68,7 +74,7 @@ def main(argv=None) -> int:
     if args.command == "scan":
         from src.pipeline.daily_scan import run_daily_scan
 
-        run_daily_scan(fetch_reviews=not args.no_reviews)
+        run_daily_scan(fetch_reviews=not args.no_reviews, country=args.country)
         return 0
 
     if args.command == "deep-dive":

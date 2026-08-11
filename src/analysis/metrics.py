@@ -75,7 +75,7 @@ class CategoryAggregate:
 
 
 def _latest_snapshot_per_app(
-    session: Session, genre_id: int
+    session: Session, genre_id: int, country: str = "us"
 ) -> List[AppSnapshot]:
     """Most recent snapshot for each app CURRENTLY charting in a category.
 
@@ -83,9 +83,11 @@ def _latest_snapshot_per_app(
     snapshots, but they no longer describe today's competition - without the
     cutoff `num_apps` inflates forever and aggregates mix data from many dates.
     """
+    cc = country.lower()
     newest = session.execute(
         select(func.max(AppSnapshot.captured_at)).where(
-            AppSnapshot.genre_id == genre_id
+            AppSnapshot.genre_id == genre_id,
+            AppSnapshot.country == cc,
         )
     ).scalar()
     if newest is None:
@@ -98,6 +100,7 @@ def _latest_snapshot_per_app(
         )
         .where(
             (AppSnapshot.genre_id == genre_id)
+            & (AppSnapshot.country == cc)
             & (AppSnapshot.captured_at >= cutoff)
         )
         .group_by(AppSnapshot.app_id)
@@ -111,14 +114,16 @@ def _latest_snapshot_per_app(
             & (AppSnapshot.captured_at == subq.c.max_ts),
         )
         .where(AppSnapshot.genre_id == genre_id)
+        .where(AppSnapshot.country == cc)
     )
     return list(session.execute(stmt).scalars().all())
 
 
 def _previous_snapshot_map(
-    session: Session, genre_id: int, before: datetime
+    session: Session, genre_id: int, before: datetime, country: str = "us"
 ) -> Dict[int, AppSnapshot]:
     """Latest snapshot per app strictly before `before` (for momentum)."""
+    cc = country.lower()
     subq = (
         select(
             AppSnapshot.app_id,
@@ -126,6 +131,7 @@ def _previous_snapshot_map(
         )
         .where(
             (AppSnapshot.genre_id == genre_id)
+            & (AppSnapshot.country == cc)
             & (AppSnapshot.captured_at < before)
         )
         .group_by(AppSnapshot.app_id)
@@ -139,14 +145,15 @@ def _previous_snapshot_map(
             & (AppSnapshot.captured_at == subq.c.max_ts),
         )
         .where(AppSnapshot.genre_id == genre_id)
+        .where(AppSnapshot.country == cc)
     )
     return {s.app_id: s for s in session.execute(stmt).scalars().all()}
 
 
 def compute_category_aggregate(
-    session: Session, genre_id: int, name: str
+    session: Session, genre_id: int, name: str, country: str = "us"
 ) -> Optional[CategoryAggregate]:
-    latest = _latest_snapshot_per_app(session, genre_id)
+    latest = _latest_snapshot_per_app(session, genre_id, country=country)
     if not latest:
         return None
 
@@ -168,7 +175,9 @@ def compute_category_aggregate(
     stale_incumbents, median_days_update = _staleness(latest, run_ts)
 
     # Momentum: compare current review counts + rank to the previous run.
-    prev = _previous_snapshot_map(session, genre_id, run_ts - timedelta(hours=1))
+    prev = _previous_snapshot_map(
+        session, genre_id, run_ts - timedelta(hours=1), country=country
+    )
     momentum = _review_velocity(latest, prev)
     rank_momentum = _rank_velocity(latest, prev)
 
@@ -348,12 +357,13 @@ def _review_velocity(
     return round(sum(growths) / len(growths), 5)
 
 
-def compute_all_aggregates(session: Session) -> List[CategoryAggregate]:
+def compute_all_aggregates(session: Session, country: str = "us") -> List[CategoryAggregate]:
+    cc = country.lower()
     cats = list(session.execute(select(Category).where(Category.enabled == True)).scalars())  # noqa: E712
     out: List[CategoryAggregate] = []
     for c in cats:
-        agg = compute_category_aggregate(session, c.genre_id, c.name)
+        agg = compute_category_aggregate(session, c.genre_id, c.name, country=cc)
         if agg:
             out.append(agg)
-    logger.info("Computed aggregates for %d categories", len(out))
+    logger.info("Computed aggregates for %d categories (%s)", len(out), cc)
     return out

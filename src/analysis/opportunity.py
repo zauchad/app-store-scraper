@@ -37,6 +37,7 @@ from src.analysis.scoring import (
     contestability,
     effective_weights,
 )
+from src.config import settings
 from src.db.models import Category, CategoryScore
 from src.db.session import session_scope
 from src.logging_config import get_logger
@@ -150,10 +151,11 @@ def _cpi_lookup() -> Dict[int, float]:
         return {c.genre_id: c.base_cpi_usd for c in rows}
 
 
-def compute_and_store() -> List[ScoredCategory]:
+def compute_and_store(country: str | None = None) -> List[ScoredCategory]:
     """Compute aggregates, score, and persist a CategoryScore row per category."""
+    cc = (country or settings.store_country).lower()
     with session_scope() as session:
-        aggregates = compute_all_aggregates(session)
+        aggregates = compute_all_aggregates(session, country=cc)
 
     scored = score_categories(aggregates)
 
@@ -162,6 +164,7 @@ def compute_and_store() -> List[ScoredCategory]:
             session.add(
                 CategoryScore(
                     genre_id=s.aggregate.genre_id,
+                    country=cc,
                     num_apps=s.aggregate.num_apps,
                     avg_rating_top=s.aggregate.avg_rating_top,
                     total_rating_count=s.aggregate.total_rating_count,
@@ -190,5 +193,5 @@ def compute_and_store() -> List[ScoredCategory]:
                     success_probability=s.marketing.success_probability,
                 )
             )
-    logger.info("Stored scores for %d categories", len(scored))
+    logger.info("Stored scores for %d categories (%s)", len(scored), cc)
     return scored

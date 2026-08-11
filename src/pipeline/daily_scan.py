@@ -16,16 +16,18 @@ from src.scraper.ingest import scrape_all
 logger = get_logger(__name__)
 
 
-def run_daily_scan(fetch_reviews: bool = True) -> List[ScoredCategory]:
-    logger.info("=== Level 1 daily scan: START ===")
+def run_daily_scan(fetch_reviews: bool = True, country: str | None = None) -> List[ScoredCategory]:
+    cc = (country or settings.store_country).lower()
+    logger.info("=== Level 1 daily scan (%s): START ===", cc.upper())
     init_db()
-    counters = scrape_all(fetch_reviews=fetch_reviews)
+    counters = scrape_all(fetch_reviews=fetch_reviews, country=cc)
     logger.info("Ingestion counters: %s", counters)
-    scored = compute_and_store()
+    scored = compute_and_store(country=cc)
     top = scored[:5]
     logger.info(
-        "Top niches: %s",
+        "Top niches (%s): %s",
+        cc.upper(),
         ", ".join(f"{s.aggregate.name}={s.opportunity_score}" for s in top),
     )
-    logger.info("=== Level 1 daily scan: DONE ===")
+    logger.info("=== Level 1 daily scan (%s): DONE ===", cc.upper())
     return scored

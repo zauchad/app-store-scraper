@@ -15,7 +15,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
@@ -42,10 +42,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Level 1 - scrape + Opportunity Score
-        run: python run.py scan
+      - name: Level 1 - scrape US + Opportunity Score
+        run: python run.py scan --country us
 
-      - name: Level 2 - LLM deep dive on top niches
+      - name: Level 1 - scrape PL + Opportunity Score
+        run: python run.py scan --country pl --no-reviews
+
+      - name: Level 2 - LLM deep dive on top niches (US)
         run: python run.py deep-dive
 
       - name: Level 3 - auto-discover micro-niches (drill top categories)

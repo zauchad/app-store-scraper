@@ -19,6 +19,7 @@ from src.analysis.microniche import analyze_terms
 from src.analysis.keywords import generate_keywords
 from src.analysis.llm import is_quota_exhausted
 from src.config import settings
+from src.scraper.storefronts import PRIMARY_STOREFRONT
 from src.db.models import Category, CategoryScore
 from src.db.session import session_scope
 from src.logging_config import get_logger
@@ -29,8 +30,11 @@ logger = get_logger(__name__)
 MAX_MEGA_FOR_DRILL = 2
 
 
-def _top_contestable_categories(top_k: int) -> List[tuple]:
+def _top_contestable_categories(
+    top_k: int, country: str = PRIMARY_STOREFRONT
+) -> List[tuple]:
     """Return [(genre_id, name)] of the best, still-contestable categories."""
+    cc = country.lower()
     with session_scope() as session:
         rows = session.execute(
             select(
@@ -39,7 +43,9 @@ def _top_contestable_categories(top_k: int) -> List[tuple]:
                 CategoryScore.num_mega_incumbents,
                 CategoryScore.computed_at,
                 Category.name,
-            ).join(Category, Category.genre_id == CategoryScore.genre_id)
+            )
+            .join(Category, Category.genre_id == CategoryScore.genre_id)
+            .where(CategoryScore.country == cc)
             .order_by(CategoryScore.computed_at.desc())
         ).all()
 

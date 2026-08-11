@@ -217,8 +217,8 @@ def expand_keywords_autocomplete(seed: str, max_terms: int = 30) -> List[str]:
     return seen[:max_terms]
 
 
-# Storefronts for the geo arbitrage check: big Western markets + home market.
-GEO_COUNTRIES = ("us", "gb", "de", "fr", "pl")
+# Storefronts compared in geo-radar (same set as scheduled scans).
+GEO_COUNTRIES = ("us", "pl")
 
 
 def geo_scan(term: str, countries: tuple = GEO_COUNTRIES) -> List[dict]:

@@ -65,6 +65,7 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns(engine)
     _widen_bigint_columns(engine)
+    _backfill_country_column(engine)
     logger.info("Schema ensured (%d tables)", len(Base.metadata.tables))
 
 
@@ -192,6 +193,18 @@ def _widen_bigint_columns(engine: Engine) -> None:
                 )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not widen INTEGER columns to BIGINT: %s", exc)
+
+
+def _backfill_country_column(engine: Engine) -> None:
+    """Legacy rows pre-date multi-storefront support; treat as US."""
+    for table in ("app_snapshots", "category_scores"):
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f"UPDATE {table} SET country = 'us' WHERE country IS NULL")
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not backfill %s.country: %s", table, exc)
 
 
 @contextmanager

@@ -22,12 +22,14 @@ from src.db.models import (
 from src.db.session import session_scope
 
 
-def latest_scores_df() -> pd.DataFrame:
+def latest_scores_df(country: str = "us") -> pd.DataFrame:
     """One row per category = its most recent Opportunity Score + marketing math."""
+    cc = country.lower()
     with session_scope() as session:
         rows = session.execute(
             select(CategoryScore, Category.name)
             .join(Category, Category.genre_id == CategoryScore.genre_id)
+            .where(CategoryScore.country == cc)
             .order_by(CategoryScore.computed_at.desc())
         ).all()
 
@@ -104,7 +106,9 @@ def top_apps_for_category(genre_id: int, limit: int = 15) -> pd.DataFrame:
     return df.head(limit)
 
 
-def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
+def competitors_for_category(
+    genre_id: int, limit: int = 40, country: str = "us"
+) -> pd.DataFrame:
     """Rich competitor list for a category: latest rating/count + url + staleness.
 
     Feeds both the "competitors" table (with clickable App Store links) and the
@@ -113,12 +117,18 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
     """
     from src.analysis.estimates import monthly_installs
 
+    cc = country.lower()
     now = datetime.utcnow()
     with session_scope() as session:
-        apps = session.execute(
-            select(App).where(App.genre_id == genre_id).limit(300)
-        ).scalars().all()
-        app_by_id = {a.id: a for a in apps}
+        from src.analysis.metrics import _latest_snapshot_per_app
+
+        latest_snaps = _latest_snapshot_per_app(session, genre_id, country=cc)
+        app_by_id = {
+            a.id: a
+            for a in session.execute(
+                select(App).where(App.id.in_([s.app_id for s in latest_snaps]))
+            ).scalars().all()
+        } if latest_snaps else {}
 
         # One query for all snapshots of these apps; keep the two latest per
         # app - the pair gives review velocity -> CURRENT installs/month.
@@ -132,6 +142,7 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
                     AppSnapshot.captured_at,
                 )
                 .where(AppSnapshot.app_id.in_(list(app_by_id)))
+                .where(AppSnapshot.country == cc)
                 .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
             ).all()
             for s in snaps:
@@ -140,7 +151,7 @@ def competitors_for_category(genre_id: int, limit: int = 40) -> pd.DataFrame:
                     rows.append(s)
 
         records: List[Dict] = []
-        for a in apps:
+        for a in app_by_id.values():
             rows = recent.get(a.id, [])
             rating, ratings = (rows[0].rating_avg, rows[0].rating_count) if rows else (None, None)
             days = None
@@ -179,11 +190,11 @@ def has_any_data() -> bool:
         return session.query(CategoryScore).first() is not None
 
 
-def category_growth_df(weeks: int = 4) -> pd.DataFrame:
+def category_growth_df(weeks: int = 4, country: str = "us") -> pd.DataFrame:
     """Median per-app engagement growth over the last N weeks, per category."""
     from src.analysis.trends import all_category_growth
 
-    rows = all_category_growth(weeks=weeks)
+    rows = all_category_growth(weeks=weeks, country=country)
     df = pd.DataFrame(
         [
             {
@@ -198,16 +209,20 @@ def category_growth_df(weeks: int = 4) -> pd.DataFrame:
     return df
 
 
-def category_rating_history(genre_id: int, limit: int = 60) -> pd.DataFrame:
+def category_rating_history(
+    genre_id: int, limit: int = 60, country: str = "us"
+) -> pd.DataFrame:
     """Time series of the category's avg incumbent rating (quality over time).
 
     Falling line = incumbents getting worse = a FRESH quality gap opening up.
     Built straight from stored CategoryScore rows - no extra data needed.
     """
+    cc = country.lower()
     with session_scope() as session:
         rows = session.execute(
             select(CategoryScore.computed_at, CategoryScore.avg_rating_top)
             .where(CategoryScore.genre_id == genre_id)
+            .where(CategoryScore.country == cc)
             .order_by(CategoryScore.computed_at.asc())
             .limit(limit)
         ).all()
@@ -217,7 +232,7 @@ def category_rating_history(genre_id: int, limit: int = 60) -> pd.DataFrame:
     return df
 
 
-def quality_movers_df(limit: int = 15, min_drop: float = 0.05) -> pd.DataFrame:
+def quality_movers_df(limit: int = 15, min_drop: float = 0.05, country: str = "us") -> pd.DataFrame:
     """Apps whose rating DROPPED most vs the prior run (fresh openings).
 
     A sizeable app whose rating is sliding = users turning sour = an opening for
@@ -225,6 +240,7 @@ def quality_movers_df(limit: int = 15, min_drop: float = 0.05) -> pd.DataFrame:
     """
     from src.db.models import AppSnapshot
 
+    cc = country.lower()
     with session_scope() as session:
         snaps = session.execute(
             select(
@@ -238,6 +254,7 @@ def quality_movers_df(limit: int = 15, min_drop: float = 0.05) -> pd.DataFrame:
             )
             .join(App, App.id == AppSnapshot.app_id)
             .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .where(AppSnapshot.country == cc)
             .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
         ).all()
 
@@ -274,7 +291,9 @@ def quality_movers_df(limit: int = 15, min_drop: float = 0.05) -> pd.DataFrame:
     return df.head(limit)
 
 
-def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
+def rising_apps_df(
+    limit: int = 25, min_improvement: int = 1, country: str = "us"
+) -> pd.DataFrame:
     """Breakout detection: apps whose chart rank improved most vs the prior run.
 
     Compares each app's two most recent snapshots (needs >=2 runs of history).
@@ -283,6 +302,7 @@ def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
     """
     from src.db.models import AppSnapshot
 
+    cc = country.lower()
     with session_scope() as session:
         snaps = session.execute(
             select(
@@ -297,6 +317,7 @@ def rising_apps_df(limit: int = 25, min_improvement: int = 1) -> pd.DataFrame:
             )
             .join(App, App.id == AppSnapshot.app_id)
             .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
+            .where(AppSnapshot.country == cc)
             .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
         ).all()
 
@@ -368,6 +389,7 @@ def latest_keyword_scores_df(limit: int = 200) -> pd.DataFrame:
                 "difficulty": s.difficulty,
                 "avg_rating_top": s.avg_rating_top,
                 "median_rating_count": s.median_rating_count,
+                "total_rating_count": s.total_rating_count,
                 "strong_incumbents": s.num_strong_incumbents,
                 "mega_incumbents": s.num_mega_incumbents,
                 "num_results": s.num_results,
@@ -398,12 +420,14 @@ def pain_mining_for_apps(app_ids: List[int]):
     return mine_pains(app_ids=app_ids)
 
 
-def developer_concentration_df(genre_id: int, limit: int = 10) -> pd.DataFrame:
+def developer_concentration_df(
+    genre_id: int, limit: int = 10, country: str = "us"
+) -> pd.DataFrame:
     """Who owns the niche: publishers ranked by their share of all ratings."""
     from src.analysis.metrics import _latest_snapshot_per_app
 
     with session_scope() as session:
-        latest = _latest_snapshot_per_app(session, genre_id)
+        latest = _latest_snapshot_per_app(session, genre_id, country=country)
         ids = [s.app_id for s in latest]
         apps = (
             session.execute(select(App).where(App.id.in_(ids))).scalars().all()
@@ -426,7 +450,9 @@ def developer_concentration_df(genre_id: int, limit: int = 10) -> pd.DataFrame:
     return df.head(limit)
 
 
-def declining_apps_df(genre_id: Optional[int] = None, limit: int = 15) -> pd.DataFrame:
+def declining_apps_df(
+    genre_id: Optional[int] = None, limit: int = 15, country: str = "us"
+) -> pd.DataFrame:
     """Apps whose CURRENT version rates well below their lifetime average.
 
     The freshest free "users are souring right now" signal - visible after the
@@ -434,6 +460,7 @@ def declining_apps_df(genre_id: Optional[int] = None, limit: int = 15) -> pd.Dat
     """
     from src.analysis.scoring import DECLINE_MIN_DELTA
 
+    cc = country.lower()
     with session_scope() as session:
         stmt = (
             select(
@@ -449,6 +476,7 @@ def declining_apps_df(genre_id: Optional[int] = None, limit: int = 15) -> pd.Dat
             .join(App, App.id == AppSnapshot.app_id)
             .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
             .where(AppSnapshot.rating_avg_current.isnot(None))
+            .where(AppSnapshot.country == cc)
             .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
         )
         if genre_id is not None:
@@ -483,12 +511,12 @@ def declining_apps_df(genre_id: Optional[int] = None, limit: int = 15) -> pd.Dat
     return df.head(limit)
 
 
-def localization_gap_df(genre_id: int, limit: int = 20) -> pd.DataFrame:
+def localization_gap_df(genre_id: int, limit: int = 20, country: str = "us") -> pd.DataFrame:
     """Sizeable incumbents and the languages they ship - EN-only = opening."""
     from src.analysis.metrics import _latest_snapshot_per_app
 
     with session_scope() as session:
-        latest = _latest_snapshot_per_app(session, genre_id)
+        latest = _latest_snapshot_per_app(session, genre_id, country=country)
         ids = [s.app_id for s in latest]
         apps = (
             session.execute(select(App).where(App.id.in_(ids))).scalars().all()
@@ -517,7 +545,10 @@ def localization_gap_df(genre_id: int, limit: int = 20) -> pd.DataFrame:
 
 
 def young_winners_df(
-    genre_id: Optional[int] = None, max_age_months: int = 24, limit: int = 15
+    genre_id: Optional[int] = None,
+    max_age_months: int = 24,
+    limit: int = 15,
+    country: str = "us",
 ) -> pd.DataFrame:
     """Recently released apps that ALREADY rank in the top charts.
 
@@ -528,6 +559,7 @@ def young_winners_df(
 
     now = datetime.utcnow()
     cutoff = now - pd.Timedelta(days=max_age_months * 30)
+    cc = country.lower()
     with session_scope() as session:
         stmt = (
             select(
@@ -546,6 +578,7 @@ def young_winners_df(
             .join(Category, Category.genre_id == AppSnapshot.genre_id, isouter=True)
             .where(App.release_date.isnot(None))
             .where(App.release_date >= cutoff)
+            .where(AppSnapshot.country == cc)
             .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.desc())
         )
         if genre_id is not None:

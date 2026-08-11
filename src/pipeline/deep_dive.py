@@ -13,6 +13,7 @@ from src.analysis.insights import generate_insight_for_category
 from src.analysis.llm import is_quota_exhausted
 from src.analysis.opportunity import ScoredCategory
 from src.config import settings
+from src.scraper.storefronts import PRIMARY_STOREFRONT
 from src.db.models import CategoryScore
 from src.db.session import session_scope
 from src.logging_config import get_logger
@@ -20,11 +21,13 @@ from src.logging_config import get_logger
 logger = get_logger(__name__)
 
 
-def _top_genre_ids(top_k: int) -> List[int]:
+def _top_genre_ids(top_k: int, country: str = PRIMARY_STOREFRONT) -> List[int]:
     """Genre IDs of the highest opportunity scores from the latest run."""
+    cc = country.lower()
     with session_scope() as session:
         rows = session.execute(
             select(CategoryScore.genre_id, CategoryScore.opportunity_score)
+            .where(CategoryScore.country == cc)
             .order_by(CategoryScore.computed_at.desc())
         ).all()
     # keep first (latest) occurrence per genre, then sort by score

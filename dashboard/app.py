@@ -57,6 +57,13 @@ from src.reporting import (  # noqa: E402
 )
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
+from src.scraper.storefronts import STOREFRONTS  # noqa: E402
+
+# Sidebar controls — budget recalculates marketing math live; storefront switches
+# between US / PL data collected by the daily scan.
+STOREFRONT_OPTIONS = STOREFRONTS
+BUDGET_OPTIONS_PLN = [3000, 5000, 7500, 10000, 15000, 20000, 25000]
+
 st.set_page_config(
     page_title="Market Intel — App Store Niche Radar",
     page_icon="📡",
@@ -102,9 +109,70 @@ st.markdown(
 # --------------------------------------------------------------------------- #
 #  Formatting helpers
 # --------------------------------------------------------------------------- #
+def dashboard_budget_pln() -> float:
+    return float(
+        st.session_state.get("dashboard_budget_pln", settings.marketing_budget_pln)
+    )
+
+
+def dashboard_storefront() -> str:
+    return str(
+        st.session_state.get("dashboard_storefront", "us")
+    ).lower()
+
+
+def report_country() -> str:
+    return dashboard_storefront()
+
+
+def _apply_marketing_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
+    """Recompute installs / success for the sidebar budget (CPI stays from scan)."""
+    if df.empty:
+        return df
+    from src.analysis.marketing import estimate
+
+    out = df.copy()
+    for idx, row in out.iterrows():
+        cpi = row.get("est_cpi_pln")
+        if cpi is None or pd.isna(cpi) or float(cpi) <= 0:
+            continue
+        base_cpi_usd = float(cpi) / settings.usd_pln_rate
+        m = estimate(
+            base_cpi_usd=base_cpi_usd,
+            opportunity_0_100=float(row.get("opportunity_score") or 0),
+            quality_gap_0_1=float(row.get("quality_gap") or 0),
+            contestability=float(row.get("contestability") or 1.0),
+            total_rating_count=int(
+                row.get("total_rating_count")
+                or (row.get("median_rating_count") or 0)
+                * max(int(row.get("num_apps") or row.get("num_results") or 0), 1)
+            ),
+            num_apps=int(row.get("num_apps") or row.get("num_results") or 0),
+            budget_pln=budget,
+        )
+        out.at[idx, "est_installs_month"] = m.est_installs_month
+        out.at[idx, "marketing_cost_pln"] = m.marketing_cost_pln
+        out.at[idx, "success_probability"] = m.success_probability
+    return out
+
+
 @st.cache_data(ttl=300)
+def _scores_raw(country: str) -> pd.DataFrame:
+    return latest_scores_df(country)
+
+
+@st.cache_data(ttl=300)
+def _keywords_raw() -> pd.DataFrame:
+    return latest_keyword_scores_df()
+
+
 def load_scores() -> pd.DataFrame:
-    return latest_scores_df()
+    cc = report_country()
+    return _apply_marketing_budget(_scores_raw(cc), dashboard_budget_pln())
+
+
+def load_keyword_scores() -> pd.DataFrame:
+    return _apply_marketing_budget(_keywords_raw(), dashboard_budget_pln())
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -205,15 +273,42 @@ def page_header(title: str, subtitle: str) -> None:
 #  Sidebar — global context + help (rendered once, shown on every page)
 # --------------------------------------------------------------------------- #
 def render_sidebar() -> None:
+    if "dashboard_storefront" not in st.session_state:
+        st.session_state.dashboard_storefront = "us"
+    if "dashboard_budget_pln" not in st.session_state:
+        default_budget = int(settings.marketing_budget_pln)
+        st.session_state.dashboard_budget_pln = (
+            default_budget
+            if default_budget in BUDGET_OPTIONS_PLN
+            else BUDGET_OPTIONS_PLN[2]  # 7500
+        )
+
     with st.sidebar:
         st.markdown("### 📡 Market Intel")
         st.caption("App Store Niche Radar")
         st.divider()
 
         st.markdown("**Konfiguracja**")
-        c1, c2 = st.columns(2)
-        c1.metric("Storefront", settings.store_country.upper())
-        c2.metric("Budżet / mies.", pln(settings.marketing_budget_pln))
+        st.selectbox(
+            "Storefront",
+            list(STOREFRONT_OPTIONS),
+            format_func=lambda c: STOREFRONT_OPTIONS.get(c, c.upper()),
+            key="dashboard_storefront",
+            help="Przełącz między danymi ze skanów US i PL (zbierane codziennie w CI).",
+        )
+        st.selectbox(
+            "Budżet / mies.",
+            BUDGET_OPTIONS_PLN,
+            format_func=lambda b: pln(b),
+            key="dashboard_budget_pln",
+            help=(
+                "Twój miesięczny budżet marketingowy (PLN). Przelicza na żywo "
+                "instalacje/mies. i szansę sukcesu (CPI z niszy × budżet ÷ CPI)."
+            ),
+        )
+        st.caption(
+            f"Skanowane rynki: **{' · '.join(c.upper() for c in STOREFRONT_OPTIONS)}**."
+        )
         st.caption("Gry wykluczone (kapitałochłonne).")
 
         if settings.llm_enabled:
@@ -318,7 +413,8 @@ def page_radar() -> None:
     disp["CPI"] = disp["est_cpi_pln"].apply(pln)
     disp["Contest."] = disp["contestability"].apply(lambda x: f"{x:.2f}")
     disp["Skala (life.)"] = disp["median_rating_count"].apply(installs_label)
-    gdf = category_growth_df(weeks=4)
+    cc = report_country()
+    gdf = category_growth_df(weeks=4, country=cc)
     if not gdf.empty:
         disp = disp.merge(gdf[["genre_id", "growth_pct"]], on="genre_id", how="left")
         disp["Wzrost 4-tyg."] = disp["growth_pct"].apply(
@@ -354,7 +450,7 @@ def page_radar() -> None:
         st.markdown("#### 🚀 Breakout — apki najszybciej rosnące")
         st.caption("Największy skok pozycji względem poprzedniego skanu. "
                    "Wymaga ≥2 dni historii.")
-        rising = rising_apps_df(limit=15)
+        rising = rising_apps_df(limit=15, country=cc)
         if rising.empty:
             st.info("Brak danych o breakoutach — potrzebne min. 2 skany.")
         else:
@@ -367,7 +463,7 @@ def page_radar() -> None:
         st.markdown("#### 📉 Spadki jakości — świeże luki")
         st.caption("Silne apki, których średnia ocena spada między skanami. "
                    "Wymaga ≥2 dni historii.")
-        movers = quality_movers_df(limit=15)
+        movers = quality_movers_df(limit=15, country=cc)
         if movers.empty:
             st.info("Brak wykrytych spadków ocen (potrzebne min. 2 skany).")
         else:
@@ -377,7 +473,7 @@ def page_radar() -> None:
                 "rating_drop": "Spadek (★)", "rating_count": "Liczba ocen"}),
                 width="stretch", hide_index=True)
 
-    dec_all = declining_apps_df()
+    dec_all = declining_apps_df(country=cc)
     if not dec_all.empty:
         st.divider()
         st.markdown("#### 🩹 Bieżąca wersja gorsza niż średnia — użytkownicy "
@@ -409,6 +505,7 @@ def page_deep() -> None:
         return
 
     df = load_scores()
+    cc = report_country()
     names = df["category"].tolist()
 
     # Annotate each option with its score + verdict so the user picks informed,
@@ -452,7 +549,7 @@ def page_deep() -> None:
         st.error(
             f"🛑 **Guardrail gigantów:** ta kategoria ma **{mega}** aplikacje z ponad "
             f"3 mln ocen. Konkurowanie z nimi przy budżecie "
-            f"{pln(settings.marketing_budget_pln)}/mies. jest nierealne — potraktuj "
+            f"{pln(dashboard_budget_pln())}/mies. jest nierealne — potraktuj "
             f"wnioski jako inspirację do **węższej pod-niszy**, nie do frontalnego ataku."
         )
 
@@ -533,7 +630,7 @@ def page_deep() -> None:
         ui.how_button(["demand", "quality_gap", "low_saturation", "momentum"],
                       key="dd_how_breakdown")
 
-        hist = category_rating_history(genre_id)
+        hist = category_rating_history(genre_id, country=cc)
         if len(hist) >= 2:
             st.markdown("#### Trend jakości konkurencji")
             figt = go.Figure(go.Scatter(
@@ -575,7 +672,7 @@ def page_deep() -> None:
         if pd.notna(dev_share) and dev_share >= 0.5:
             st.warning("⚠️ Jeden wydawca kontroluje ponad połowę ocen w tej "
                        "niszy — to portfolio play, trudny przeciwnik.")
-        ddf = developer_concentration_df(genre_id)
+        ddf = developer_concentration_df(genre_id, country=cc)
         if not ddf.empty:
             show = ddf.copy()
             show["share"] = show["share"].apply(pct)
@@ -592,7 +689,7 @@ def page_deep() -> None:
         st.metric("Duże apki EN-only", pct(en_share) if pd.notna(en_share) else "n/d",
                   help="Odsetek dużych konkurentów wydających apkę wyłącznie "
                        "po angielsku. ⬆️ WYŻEJ = większa okazja lokalizacyjna.")
-        ldf = localization_gap_df(genre_id)
+        ldf = localization_gap_df(genre_id, country=cc)
         if ldf.empty:
             st.caption("Dane o językach pojawią się po pierwszym skanie "
                        "z rozszerzonym scraperem.")
@@ -609,7 +706,7 @@ def page_deep() -> None:
     st.markdown("#### 📉 Psujące się apki — bieżąca wersja gorsza niż lifetime")
     st.caption("Użytkownicy odwracają się od apki *teraz* — najświeższy sygnał "
                "otwierającej się luki (nie wymaga historii skanów).")
-    dec = declining_apps_df(genre_id)
+    dec = declining_apps_df(genre_id, country=cc)
     if dec.empty:
         st.caption("Brak wykrytych spadków — dane bieżącej wersji pojawią się "
                    "po pierwszym skanie z rozszerzonym scraperem.")
@@ -626,7 +723,7 @@ def page_deep() -> None:
     st.caption("Apki wydane w ciągu 24 miesięcy, które są już w top-chartach. "
                "Najlepszy dowód, że w tej niszy wciąż da się wejść — ich "
                "pozycjonowanie pokazuje działające punkty wejścia.")
-    young = young_winners_df(genre_id)
+    young = young_winners_df(genre_id, country=cc)
     if young.empty:
         st.caption("Brak młodych apek w top — rynek wygląda na zabetonowany "
                    "(to ważny sygnał ostrzegawczy).")
@@ -764,7 +861,7 @@ def page_deep() -> None:
     st.markdown("#### 🏆 Kandydaci do stworzenia lepszej apki (sklonuj i ulepsz)")
     st.caption("Do 5 apek z udowodnionym popytem ale wykorzystywalną słabością — "
                "najlepsze wzorce, na których warto oprzeć własny, lepszy produkt.")
-    comp_df = competitors_for_category(genre_id)
+    comp_df = competitors_for_category(genre_id, country=cc)
     candidates = (rank_candidates(comp_df.to_dict("records"), limit=5)
                   if not comp_df.empty else [])
     ui.render_candidates(candidates, missing_features=missing_features)
@@ -858,7 +955,7 @@ def page_deep() -> None:
         q3_note = ", ".join(q3_bits) or "brak sygnałów płacenia w tej niszy"
 
         growth_val = None
-        gdf_all = category_growth_df(weeks=4)
+        gdf_all = category_growth_df(weeks=4, country=report_country())
         if not gdf_all.empty:
             hit = gdf_all[gdf_all["genre_id"] == genre_id]
             if not hit.empty and pd.notna(hit["growth_pct"].iloc[0]):
@@ -1001,7 +1098,7 @@ def page_micro() -> None:
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Analiza nie powiodła się: {exc}")
 
-    kdf = latest_keyword_scores_df()
+    kdf = load_keyword_scores()
     if kdf.empty:
         st.info("Brak przeanalizowanych mikro-nisz. Wpisz słowa kluczowe powyżej "
                 "i kliknij Analizuj.")
@@ -1079,11 +1176,16 @@ def page_micro() -> None:
 
     # Geo arbitrage: the same niche can be besieged in the US and open in DE/PL.
     st.markdown("##### 🌍 Geo-radar — ta sama nisza w innych krajach")
-    if st.button("Porównaj konkurencję w US · GB · DE · FR · PL",
-                 key=f"geo_{picked}"):
-        from src.analysis.microniche import geo_scan
-        with st.spinner("Odpytuję storefronty (5 krajów)…"):
-            st.session_state[f"geo_res_{picked}"] = geo_scan(picked)
+    if st.button(
+        f"Porównaj US vs PL (priorytet: {dashboard_storefront().upper()})",
+        key=f"geo_{picked}",
+    ):
+        from src.analysis.microniche import GEO_COUNTRIES, geo_scan
+
+        sf = dashboard_storefront()
+        countries = tuple(dict.fromkeys((sf,) + GEO_COUNTRIES))
+        with st.spinner("Odpytuję storefronty…"):
+            st.session_state[f"geo_res_{picked}"] = geo_scan(picked, countries=countries)
     geo_res = st.session_state.get(f"geo_res_{picked}")
     if geo_res:
         gdf_geo = pd.DataFrame(geo_res)

@@ -30,10 +30,14 @@ class CategoryGrowth:
     apps_with_history: int
 
 
-def _snapshots_by_app(session: Session, genre_id: int) -> Dict[int, List[AppSnapshot]]:
+def _snapshots_by_app(
+    session: Session, genre_id: int, country: str = "us"
+) -> Dict[int, List[AppSnapshot]]:
+    cc = country.lower()
     rows = session.execute(
         select(AppSnapshot)
         .where(AppSnapshot.genre_id == genre_id)
+        .where(AppSnapshot.country == cc)
         .order_by(AppSnapshot.app_id, AppSnapshot.captured_at.asc())
     ).scalars().all()
     by_app: Dict[int, List[AppSnapshot]] = {}
@@ -42,8 +46,10 @@ def _snapshots_by_app(session: Session, genre_id: int) -> Dict[int, List[AppSnap
     return by_app
 
 
-def category_growth(session: Session, genre_id: int, name: str, weeks: int) -> CategoryGrowth:
-    by_app = _snapshots_by_app(session, genre_id)
+def category_growth(
+    session: Session, genre_id: int, name: str, weeks: int, country: str = "us"
+) -> CategoryGrowth:
+    by_app = _snapshots_by_app(session, genre_id, country=country)
     if not by_app:
         return CategoryGrowth(genre_id, name, None, 0)
 
@@ -69,12 +75,13 @@ def category_growth(session: Session, genre_id: int, name: str, weeks: int) -> C
     return CategoryGrowth(genre_id, name, round(statistics.median(growths), 4), len(growths))
 
 
-def all_category_growth(weeks: int = 4) -> List[CategoryGrowth]:
+def all_category_growth(weeks: int = 4, country: str = "us") -> List[CategoryGrowth]:
+    cc = country.lower()
     out: List[CategoryGrowth] = []
     with session_scope() as session:
         cats = session.execute(
             select(Category.genre_id, Category.name).where(Category.enabled == True)  # noqa: E712
         ).all()
         for genre_id, name in cats:
-            out.append(category_growth(session, genre_id, name, weeks))
+            out.append(category_growth(session, genre_id, name, weeks, country=cc))
     return out

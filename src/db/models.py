@@ -104,6 +104,8 @@ class AppSnapshot(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     app_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("apps.id"), index=True)
     genre_id: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
+    # App Store storefront (us, pl, …) — same app can rank differently per country.
+    country: Mapped[str] = mapped_column(String(8), default="us", index=True)
     chart_type: Mapped[str] = mapped_column(String(48))
     # Chart membership this run (an app can rank in several charts; chart_type
     # keeps only the best-rank one). Grossing membership = the free
@@ -161,6 +163,7 @@ class CategoryScore(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     genre_id: Mapped[int] = mapped_column(ForeignKey("categories.genre_id"), index=True)
+    country: Mapped[str] = mapped_column(String(8), default="us", index=True)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), index=True
     )

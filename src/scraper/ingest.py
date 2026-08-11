@@ -74,21 +74,22 @@ def _upsert_app(session: Session, entry: ChartEntry) -> None:
         app.url = entry.url or app.url
 
 
-def scrape_all(fetch_reviews: bool = True) -> Dict[str, int]:
+def scrape_all(fetch_reviews: bool = True, country: str | None = None) -> Dict[str, int]:
     """Run a full ingestion pass. Returns simple counters for logging/monitoring."""
     init_db()
-    client = ItunesClient(country=settings.store_country)
+    cc = (country or settings.store_country).lower()
+    client = ItunesClient(country=cc)
     seeds = get_category_seeds(settings.excluded_genres)
     counters = {"categories": 0, "apps": 0, "snapshots": 0, "reviews": 0}
 
     for seed in seeds:
         try:
             counters["categories"] += 1
-            _scrape_category(client, seed.genre_id, fetch_reviews, counters)
+            _scrape_category(client, seed.genre_id, fetch_reviews, counters, country=cc)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Category %s failed: %s", seed.genre_id, exc)
+            logger.exception("Category %s failed (%s): %s", seed.genre_id, cc, exc)
 
-    logger.info("Ingestion done: %s", counters)
+    logger.info("Ingestion done (%s): %s", cc, counters)
     return counters
 
 
@@ -97,6 +98,7 @@ def _scrape_category(
     genre_id: int,
     fetch_reviews: bool,
     counters: Dict[str, int],
+    country: str,
 ) -> None:
     # Collect chart entries (dedupe across chart types, keep best rank and
     # remember WHICH chart that best rank came from). Full membership per chart
@@ -128,6 +130,7 @@ def _scrape_category(
                 AppSnapshot(
                     app_id=app_id,
                     genre_id=genre_id,
+                    country=country,
                     chart_type=chart_of.get(app_id, settings.chart_list[0]),
                     in_free_chart=any(
                         "free" in c for c in membership.get(app_id, set())
