@@ -64,6 +64,7 @@ from dashboard.billing_ui import (  # noqa: E402
     render_unlock_gate,
 )
 from src.billing.credits import niche_key as billing_niche_key  # noqa: E402
+from src.billing.credits import keyword_niche_key  # noqa: E402
 from src.scraper.categories import CATEGORY_SEEDS  # noqa: E402
 
 from src.scraper.storefronts import STOREFRONTS  # noqa: E402
@@ -1152,8 +1153,9 @@ def page_micro() -> None:
     view_cols = ["term", "opportunity_score", "Szansa", "Popyt wysz.", "Trudność",
                  "avg_rating_top", "Instalacje (life.)", "strong_incumbents",
                  "mega_incumbents", "Contest.", "est_installs_month", "CPI", "Werdykt"]
+    kdisp_show, hidden_kw = limit_radar_niches(kdisp)
     event = st.dataframe(
-        kdisp[view_cols].rename(columns={
+        kdisp_show[view_cols].rename(columns={
             "term": "Mikro-nisza", "opportunity_score": "Opportunity",
             "avg_rating_top": "Śr. ocena", "strong_incumbents": "Twierdze",
             "mega_incumbents": "Giganci", "est_installs_month": "Instalacje/mies. (budżet)"}),
@@ -1162,6 +1164,7 @@ def page_micro() -> None:
         column_config={"Opportunity": st.column_config.ProgressColumn(
             "Opportunity", min_value=0, max_value=100, format="%.0f")},
     )
+    render_radar_pro_upsell(hidden=hidden_kw, kind="mikro-nisz w rankingu")
     st.caption("💡 Sweet spot ASO: **wysoki Popyt wysz. + niska Trudność** "
                "(dużo szukają, słabi konkurenci do wyprzedzenia).")
     ce1, ce2 = st.columns([1, 4])
@@ -1198,6 +1201,11 @@ def page_micro() -> None:
     d6.metric("Contestability", f"{krow['contestability']:.2f}")
     ui.how_button(["opportunity_score", "demand", "search_interest", "difficulty",
                    "quality_gap", "contestability"], key="kw_how_detail")
+
+    cc = report_country()
+    kw_key = keyword_niche_key(picked, cc)
+    if not render_unlock_gate(niche_key=kw_key, niche_label=picked, content="mikro-nisza"):
+        return
 
     # Geo arbitrage: the same niche can be besieged in the US and open in DE/PL.
     st.markdown("##### 🌍 Geo-radar — ta sama nisza w innych krajach")

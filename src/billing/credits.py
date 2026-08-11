@@ -24,6 +24,12 @@ def niche_key(*, kind: str, country: str, identifier: int | str) -> str:
     return f"{kind}:{country.lower()}:{identifier}"
 
 
+def keyword_niche_key(term: str, country: str) -> str:
+    """Unlock key for a micro-niche search phrase."""
+    safe = term.strip().lower().replace(":", "_")[:80]
+    return niche_key(kind="keyword", country=country, identifier=safe)
+
+
 def monetization_active() -> bool:
     return settings.monetization_enabled
 

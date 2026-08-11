@@ -228,7 +228,7 @@ python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subsc
 
 ## Next steps (Phase 1 polish)
 
-- Mikro-nisze detail paywall
+- Automated billing tests
 
 ---
 
@@ -236,7 +236,7 @@ python run.py billing-check --simulate-webhook --user-id YOUR_UUID --event subsc
 
 | Tier | Access |
 |------|--------|
-| **Free** | Radar (top 5 nisz + 3 nazwy apek/sekcja), Mikro-nisze browse, Analiza preview |
-| **1 credit ($19)** | Full Analiza for one niche, forever |
+| **Free** | Radar (top 5 nisz + 3 nazwy apek/sekcja), Mikro-nisze ranking + podgląd frazy, Analiza preview |
+| **1 credit ($19)** | Full **Analiza** OR **Mikro-nisza** detail for one niche, forever |
 | **5 credits ($49)** | Five niche unlocks |
 | **Pro ($39/mo)** | 15 credits/mo + CSV export on Radar & Mikro-nisze |

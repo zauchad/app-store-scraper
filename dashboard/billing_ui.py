@@ -81,25 +81,42 @@ def render_checkout_links() -> None:
             col.caption(f"{label} (skonfiguruj checkout URL)")
 
 
-def render_unlock_gate(*, niche_key: str, niche_label: str) -> bool:
-    """Return True if premium Analiza content may be shown."""
+def render_unlock_gate(
+    *,
+    niche_key: str,
+    niche_label: str,
+    content: str = "analiza",
+) -> bool:
+    """Return True if premium content may be shown.
+
+    content: short label for unlock copy — "analiza" (category) or "mikro-nisza".
+    """
     if not monetization_active():
         return True
 
     if not is_logged_in():
         st.warning(
             "🔒 **Pełna analiza wymaga konta.** Zaloguj się w panelu bocznym, "
-            "a potem odblokuj tę niszę za 1 kredyt.",
+            "a potem odblokuj za 1 kredyt.",
             icon=":material/lock:",
         )
         with st.container(border=True):
-            st.markdown("#### Co dostaniesz po odblokowaniu?")
-            st.markdown(
-                "- Rozbicie score i ekonomia wejścia\n"
-                "- Analiza recenzji (pain mining) + AI insights\n"
-                "- Kandydaci „sklonuj i ulepsz” + raport Markdown\n"
-                "- Test 5 pytań i pełna lista konkurentów"
-            )
+            if content == "mikro-nisza":
+                st.markdown("#### Co dostaniesz po odblokowaniu?")
+                st.markdown(
+                    "- Geo-radar (US vs PL i inne rynki)\n"
+                    "- Popyt na Reddicie („szukam apki do…\")\n"
+                    "- Kandydaci „sklonuj i ulepsz” + pełna lista konkurentów\n"
+                    "- Pain mining z recenzji konkurencji"
+                )
+            else:
+                st.markdown("#### Co dostaniesz po odblokowaniu?")
+                st.markdown(
+                    "- Rozbicie score i ekonomia wejścia\n"
+                    "- Analiza recenzji (pain mining) + AI insights\n"
+                    "- Kandydaci „sklonuj i ulepsz” + raport Markdown\n"
+                    "- Test 5 pytań i pełna lista konkurentów"
+                )
         return False
 
     user = current_user()
@@ -109,8 +126,9 @@ def render_unlock_gate(*, niche_key: str, niche_label: str) -> bool:
     if is_niche_unlocked(user.id, niche_key):
         return True
 
+    label = "mikro-niszy" if content == "mikro-nisza" else "niszy"
     st.info(
-        f"🔒 **{niche_label}** — podgląd darmowy powyżej. Pełna analiza kosztuje "
+        f"🔒 **{niche_label}** — podgląd darmowy powyżej. Pełna {label} kosztuje "
         f"**{CREDIT_COST_NICHE_UNLOCK} kredyt** (jednorazowo, na zawsze).",
         icon=":material/lock_open:",
     )
