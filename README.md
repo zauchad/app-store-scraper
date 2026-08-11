@@ -411,4 +411,17 @@ konfiguracja — zero zmian w kodzie pipeline'u/dashboardu.
 - Scraper recenzji z renderowanej strony (Playwright) jako fallback.
 - Google Play jako drugie źródło (cross-platform walidacja niszy).
 - Alerty (Slack/e-mail) gdy nowa nisza przekroczy próg Opportunity Score.
+
+## Monetyzacja (Phase 1)
+
+System kredytów + odblokowanie pełnej **Analizy** (1 kredyt/nisza) oraz plan **Pro**
+(CSV + 15 kredytów/mies.). Lokalnie wyłączone domyślnie (`MONETIZATION_ENABLED=false`).
+
+**Pełna instrukcja go-live:** [docs/MONETIZATION.md](docs/MONETIZATION.md)
+
+Szybka walidacja konfiguracji:
+
+```bash
+python run.py billing-check --strict
+python run.py billing-check --simulate-webhook --user-id YOUR_SUPABASE_UUID
 ```

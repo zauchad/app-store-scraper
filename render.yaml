@@ -1,0 +1,22 @@
+# Render.com blueprint for the billing webhook server.
+# Dashboard stays on Streamlit Cloud; only deploy this service on Render.
+services:
+  - type: web
+    name: market-intel-webhooks
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn billing.webhook_server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: LEMONSQUEEZY_WEBHOOK_SECRET
+        sync: false
+      - key: LEMONSQUEEZY_VARIANT_1_CREDIT
+        sync: false
+      - key: LEMONSQUEEZY_VARIANT_5_CREDITS
+        sync: false
+      - key: LEMONSQUEEZY_VARIANT_PRO
+        sync: false
+      - key: PRO_MONTHLY_CREDITS
+        value: "15"

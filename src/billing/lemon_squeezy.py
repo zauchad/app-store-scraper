@@ -31,11 +31,22 @@ def _event_id(payload: dict[str, Any]) -> str:
 
 
 def _custom_data(payload: dict[str, Any]) -> dict[str, Any]:
-    attrs = (payload.get("data") or {}).get("attributes") or {}
-    custom = attrs.get("custom_data") or {}
+    # Lemon Squeezy puts checkout custom fields on meta.custom_data (not data.attributes).
+    meta = payload.get("meta") or {}
+    custom = meta.get("custom_data") or {}
     if isinstance(custom, dict):
         return custom
     return {}
+
+
+def _variant_id(payload: dict[str, Any]) -> str:
+    attrs = (payload.get("data") or {}).get("attributes") or {}
+    if attrs.get("variant_id") is not None:
+        return str(attrs["variant_id"])
+    first = attrs.get("first_order_item") or {}
+    if isinstance(first, dict) and first.get("variant_id") is not None:
+        return str(first["variant_id"])
+    return ""
 
 
 def _user_email(payload: dict[str, Any]) -> str:
@@ -87,9 +98,7 @@ def handle_webhook(payload: dict[str, Any]) -> dict[str, Any]:
         email = _user_email(payload)
 
         if event_name in ("order_created", "subscription_payment_success"):
-            variant_id = str(
-                ((payload.get("data") or {}).get("attributes") or {}).get("variant_id") or ""
-            )
+            variant_id = _variant_id(payload)
             credits, plan = _credits_for_variant(variant_id)
             if credits <= 0:
                 credits, plan = _credits_from_custom(custom)

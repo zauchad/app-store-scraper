@@ -53,6 +53,30 @@ def main(argv=None) -> int:
 
     sub.add_parser("webhook-server", help="Lemon Squeezy billing webhook (FastAPI)")
 
+    p_bill = sub.add_parser("billing-check", help="Validate monetization config")
+    p_bill.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail on missing vars even if MONETIZATION_ENABLED=false",
+    )
+    p_bill.add_argument(
+        "--simulate-webhook",
+        action="store_true",
+        help="Grant test credits via a fake order_created webhook payload",
+    )
+    p_bill.add_argument(
+        "--user-id",
+        type=str,
+        default="test-billing-user",
+        help="Supabase user UUID for --simulate-webhook",
+    )
+    p_bill.add_argument(
+        "--variant",
+        choices=["1", "5", "pro"],
+        default="1",
+        help="Which product variant to simulate",
+    )
+
     p_dig = sub.add_parser("digest", help="Build the weekly 'what changed' brief")
     p_dig.add_argument("--weeks", type=int, default=4)
     p_dig.add_argument("--send", action="store_true",
@@ -120,6 +144,49 @@ def main(argv=None) -> int:
             reload=False,
         )
         return 0
+
+    if args.command == "billing-check":
+        from src.billing.check_config import format_check_report, run_billing_check
+
+        if args.simulate_webhook:
+            import time
+
+            from src.billing.lemon_squeezy import handle_webhook
+            from src.config import settings
+
+            credits_map = {"1": 1, "5": 5, "pro": settings.pro_monthly_credits}
+            variant_map = {
+                "1": settings.lemonsqueezy_variant_1_credit or "999001",
+                "5": settings.lemonsqueezy_variant_5_credits or "999005",
+                "pro": settings.lemonsqueezy_variant_pro or "999039",
+            }
+            custom: dict = {
+                "user_id": args.user_id,
+                "credits": credits_map[args.variant],
+            }
+            if args.variant == "pro":
+                custom["plan"] = "pro"
+            sim_id = f"sim-{int(time.time())}"
+            payload = {
+                "meta": {
+                    "event_name": "order_created",
+                    "custom_data": custom,
+                },
+                "data": {
+                    "id": sim_id,
+                    "attributes": {
+                        "user_email": f"{args.user_id}@test.local",
+                        "first_order_item": {"variant_id": int(variant_map[args.variant])},
+                    },
+                },
+            }
+            result = handle_webhook(payload)
+            print("Simulated webhook:", result)
+            return 0 if result.get("ok") else 1
+
+        res = run_billing_check(strict=args.strict)
+        print(format_check_report(res))
+        return 0 if res.ok else 1
 
     if args.command == "digest":
         from src.pipeline.digest import run_digest
