@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     database_url: str = ""
 
     # --- LLM ---
-    gemini_api_key: str = ""
-    # Optional pool of keys (comma-separated). When the daily free-tier quota of
+    # Comma-separated Google AI Studio keys. When the daily free-tier quota of
     # one key is hit (429 PerDay), we rotate to the next -> multiplies daily
     # capacity. Keys from DIFFERENT Google Cloud projects have independent quotas.
+    # A single key works too (no commas needed).
     gemini_api_keys: str = ""
     # "gemini-2.5-flash" is no longer available to NEW API projects (404). Use the
     # forward-compatible alias that always points to the current flash model.
@@ -148,10 +148,8 @@ class Settings(BaseSettings):
 
     @property
     def gemini_key_list(self) -> List[str]:
-        """Ordered, de-duplicated key pool (GEMINI_API_KEYS, else GEMINI_API_KEY)."""
+        """Ordered, de-duplicated key pool from GEMINI_API_KEYS."""
         raw = [k.strip() for k in self.gemini_api_keys.split(",") if k.strip()]
-        if not raw and self.gemini_api_key.strip():
-            raw = [self.gemini_api_key.strip()]
         seen, out = set(), []
         for k in raw:
             if k not in seen:

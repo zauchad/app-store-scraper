@@ -63,7 +63,7 @@ def run_discovery(
 ) -> int:
     """Generate + score micro-niches for the top contestable categories."""
     if not settings.llm_enabled:
-        logger.warning("Discovery needs an LLM (GEMINI_API_KEY) to propose keywords.")
+        logger.warning("Discovery needs an LLM (GEMINI_API_KEYS) to propose keywords.")
         return 0
 
     k = top_k if top_k is not None else settings.discover_top_categories

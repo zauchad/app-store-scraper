@@ -217,7 +217,7 @@ def get_llm_client() -> Optional[LLMClient]:
     """Factory. Returns None if no key configured (dashboard degrades gracefully)."""
     global _client_singleton, _client_signature
     if not settings.llm_enabled:
-        logger.warning("LLM disabled: no GEMINI_API_KEY set.")
+        logger.warning("LLM disabled: no GEMINI_API_KEYS set.")
         return None
     provider = settings.llm_provider.lower()
     if provider != "gemini":

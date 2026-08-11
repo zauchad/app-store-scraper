@@ -219,7 +219,7 @@ def render_sidebar() -> None:
         if settings.llm_enabled:
             st.success("LLM: aktywny (Gemini)", icon=":material/check_circle:")
         else:
-            st.warning("LLM OFF — brak GEMINI_API_KEY.", icon=":material/warning:")
+            st.warning("LLM OFF — brak GEMINI_API_KEYS.", icon=":material/warning:")
 
         vol = settings.volume_provider.lower()
         st.caption(f"Popyt wyszukiwań: **{'Apple Ads (oficjalny)' if vol == 'asa' else 'proxy autocomplete (darmowy)'}**")
@@ -963,7 +963,7 @@ def page_micro() -> None:
                                   placeholder="np. habit tracking for ADHD")
         cA, cB, cC = st.columns(3)
         gen = cA.checkbox("Wygeneruj kandydatów przez AI", value=False,
-                          help="Wymaga GEMINI_API_KEY. AI zaproponuje mikro-nisze.")
+                          help="Wymaga GEMINI_API_KEYS. AI zaproponuje mikro-nisze.")
         expand = cB.checkbox("Rozszerz przez autocomplete Apple", value=False,
                              help="Crawluje podpowiedzi App Store (fraza + a–z): "
                                   "long-tail frazy, które ludzie FAKTYCZNIE "
@@ -976,7 +976,7 @@ def page_micro() -> None:
         genre_id = genre_options[genre_name]
         terms = [t.strip() for t in terms_raw.replace("\n", ",").split(",") if t.strip()]
         if gen and not settings.llm_enabled:
-            st.warning("Generator AI wymaga GEMINI_API_KEY. Podaj słowa ręcznie "
+            st.warning("Generator AI wymaga GEMINI_API_KEYS. Podaj słowa ręcznie "
                        "albo skonfiguruj klucz.")
         elif not terms and not gen:
             st.warning("Podaj przynajmniej jedno słowo kluczowe albo włącz generator AI.")

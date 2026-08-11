@@ -238,9 +238,9 @@ a na produkcji wystarczy podać `DATABASE_URL` do Supabase.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # opcjonalnie wpisz GEMINI_API_KEY
+cp .env.example .env          # opcjonalnie wpisz GEMINI_API_KEYS
 python run.py scan            # Poziom 1: scrape + Opportunity Score (SQLite)
-python run.py deep-dive       # Poziom 2: analiza LLM (wymaga GEMINI_API_KEY)
+python run.py deep-dive       # Poziom 2: analiza LLM (wymaga GEMINI_API_KEYS)
 streamlit run dashboard/app.py
 ```
 
@@ -301,15 +301,15 @@ Architektura hostingu: **Supabase** (baza) + **GitHub Actions** (codzienny scan)
 
 ### 2. LLM — Google AI Studio
 
-Wygeneruj darmowy klucz na [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
--> `GEMINI_API_KEY`.
+Wygeneruj darmowy klucz (lub kilka) na [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+-> `GEMINI_API_KEYS` (po przecinku, jeśli pula).
 
 ### 3. Codzienny scan — GitHub Actions
 
 1. Wypchnij repo na GitHub.
 2. *Settings -> Secrets and variables -> Actions -> New repository secret*:
    - `DATABASE_URL` (string z kroku 1)
-   - `GEMINI_API_KEY`
+   - `GEMINI_API_KEYS` (jeden klucz albo kilka po przecinku)
    - (opcjonalnie) `RAPIDAPI_KEY` — jeśli chcesz MODE A.
 3. (opcjonalnie) *Variables*: `STORE_COUNTRY`, `TOP_N_APPS`, `MARKETING_BUDGET_PLN`,
    `DEEP_DIVE_TOP_K`.
@@ -322,7 +322,7 @@ Wygeneruj darmowy klucz na [aistudio.google.com/apikey](https://aistudio.google.
    i plik `dashboard/app.py`. W *Advanced settings* wybierz **Python 3.11**.
 2. W *Settings -> Secrets* wklej zawartość według
    [.streamlit/secrets.toml.example](.streamlit/secrets.toml.example)
-   (minimum `DATABASE_URL` + `GEMINI_API_KEY`). Dashboard mostkuje sekrety do
+   (minimum `DATABASE_URL` + `GEMINI_API_KEYS`). Dashboard mostkuje sekrety do
    zmiennych środowiskowych automatycznie — zero zmian w kodzie.
 3. Deploy. Dashboard czyta tę samą bazę Supabase, którą zasila cron.
 
