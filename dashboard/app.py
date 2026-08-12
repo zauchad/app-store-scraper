@@ -34,7 +34,16 @@ except Exception:  # noqa: BLE001
 
 import dashboard.ui as ui  # noqa: E402
 from dashboard.landing_page import render_landing_page  # noqa: E402
-from dashboard.theme import inject_global_styles, PRIMARY, DANGER, ACCENT_SOFT  # noqa: E402
+from dashboard.theme import (  # noqa: E402
+    inject_global_styles,
+    CHART_PRIMARY,
+    CHART_OPPORTUNITY_SCALE,
+    CHART_BARS_GOOD,
+    CHART_BARS_BAD,
+    CHART_TREND,
+    CHART_PAIN,
+    TEXT,
+)
 from src.analysis.candidates import rank_candidates  # noqa: E402
 from src.analysis.estimates import lifetime_installs  # noqa: E402
 from src.config import settings  # noqa: E402
@@ -58,7 +67,7 @@ from src.reporting import (  # noqa: E402
     young_winners_df,
 )
 from dashboard.account_page import page_account  # noqa: E402
-from dashboard.auth import is_logged_in, render_auth_sidebar, render_payment_banner  # noqa: E402
+from dashboard.auth import init_auth, is_logged_in, render_auth_sidebar, render_payment_banner  # noqa: E402
 from src.billing.credits import monetization_active  # noqa: E402
 from dashboard.billing_ui import (  # noqa: E402
     is_content_unlocked,
@@ -239,12 +248,12 @@ def style_fig(fig: go.Figure, height: int = 420) -> go.Figure:
         height=height,
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,0.02)",
-        font=dict(color="#F1F5F9"),
+        plot_bgcolor="rgba(129, 140, 248, 0.04)",
+        font=dict(color=TEXT),
         legend=dict(bgcolor="rgba(0,0,0,0)"),
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.1)")
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.1)")
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.08)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.08)")
     return fig
 
 
@@ -384,14 +393,14 @@ def page_radar() -> None:
             labels={"demand": "Popyt (mediana, znormalizowany)",
                     "quality_gap": "Luka jakościowa (wyżej = gorsza konkurencja)",
                     "opportunity_score": "Opportunity"},
-            color_continuous_scale="Turbo",
+            color_continuous_scale=CHART_OPPORTUNITY_SCALE,
         )
         st.plotly_chart(style_fig(fig, 470), use_container_width=True)
     with right:
         st.markdown("#### Ranking Opportunity Score")
         st.caption("Czerwony = rynek gigantów (2+ apki >3 mln ocen).")
         rank = df.head(12).sort_values("opportunity_score")
-        colors = [DANGER if m >= 2 else PRIMARY
+        colors = [CHART_BARS_BAD if m >= 2 else CHART_BARS_GOOD
                   for m in rank["mega_incumbents"].fillna(0)]
         fig2 = go.Figure(go.Bar(
             x=rank["opportunity_score"], y=rank["category"], orientation="h",
@@ -634,7 +643,7 @@ def page_deep() -> None:
         })
         figc = go.Figure(go.Bar(
             x=comp["Wartość"], y=comp["Składnik"], orientation="h",
-            marker_color=PRIMARY,
+            marker_color=CHART_PRIMARY,
             text=[f"{v:.2f}" for v in comp["Wartość"]], textposition="outside"))
         figc.update_layout(xaxis_range=[0, 1])
         st.plotly_chart(style_fig(figc, 240), use_container_width=True)
@@ -646,7 +655,7 @@ def page_deep() -> None:
             st.markdown("#### Trend jakości konkurencji")
             figt = go.Figure(go.Scatter(
                 x=hist["date"], y=hist["avg_rating"],
-                mode="lines+markers", line=dict(color=ACCENT_SOFT)))
+                mode="lines+markers", line=dict(color=CHART_TREND, width=2)))
             figt.update_layout(yaxis_title="Śr. ocena")
             st.plotly_chart(style_fig(figt, 210), use_container_width=True)
             delta = hist["avg_rating"].iloc[-1] - hist["avg_rating"].iloc[0]
@@ -786,7 +795,7 @@ def page_deep() -> None:
                 ).sort_values("share")
                 figp = go.Figure(go.Bar(
                     x=tdf["share"], y=tdf["theme"], orientation="h",
-                    marker_color=ACCENT_SOFT,
+                    marker_color=CHART_PAIN,
                     text=[f"{s * 100:.0f}%" for s in tdf["share"]],
                     textposition="outside"))
                 figp.update_layout(
@@ -1336,13 +1345,17 @@ def page_digest() -> None:
 # --------------------------------------------------------------------------- #
 #  App shell — sidebar + native top navigation
 # --------------------------------------------------------------------------- #
-render_payment_banner()
-render_sidebar()
+init_auth()
+_on_landing = monetization_active() and not is_logged_in()
 
-if monetization_active() and not is_logged_in():
+render_payment_banner()
+
+if _on_landing:
     inject_global_styles(landing=True)
     render_landing_page()
     st.stop()
+
+render_sidebar()
 
 _nav_pages = [
     st.Page(page_radar, title="Radar", icon=":material/radar:", default=True),

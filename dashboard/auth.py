@@ -106,8 +106,15 @@ def render_payment_banner() -> None:
             pass
 
 
-def render_auth_inline(*, key_prefix: str = "inline") -> None:
-    """Compact login/register panel for the landing page (main content area)."""
+def render_auth_inline(
+    *,
+    key_prefix: str = "inline",
+    mode: str = "both",
+) -> None:
+    """Compact login/register panel for the landing page (main content area).
+
+    mode: ``both`` | ``login`` | ``signup``
+    """
     if not monetization_active() or not settings.auth_enabled:
         st.warning(
             "Auth nie skonfigurowany — ustaw SUPABASE_URL i SUPABASE_ANON_KEY.",
@@ -119,68 +126,92 @@ def render_auth_inline(*, key_prefix: str = "inline") -> None:
     if current_user():
         return
 
-    st.markdown("#### Załóż konto lub zaloguj się")
-    tab_in, tab_up = st.tabs(["Logowanie", "Rejestracja"])
-    with tab_in:
-        email = st.text_input("E-mail", key=f"{key_prefix}_signin_email")
-        password = st.text_input("Hasło", type="password", key=f"{key_prefix}_signin_pw")
-        if st.button("Zaloguj i otwórz Radar", key=f"{key_prefix}_signin_btn", type="primary", width="stretch"):
-            if not email or not password:
-                st.error("Podaj e-mail i hasło.")
-            else:
-                try:
-                    client = _supabase_client()
-                    resp = client.auth.sign_in_with_password(
-                        {"email": email.strip(), "password": password}
-                    )
-                    _store_session(resp)
-                    st.rerun()
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Logowanie nie powiodło się: {exc}")
-        with st.expander("Zapomniałeś hasła?"):
-            reset_email = st.text_input("E-mail do resetu", key=f"{key_prefix}_reset_email")
-            if st.button("Wyślij link resetujący", key=f"{key_prefix}_reset_btn"):
-                if not reset_email.strip():
-                    st.error("Podaj e-mail.")
-                else:
-                    try:
-                        client = _supabase_client()
-                        client.auth.reset_password_for_email(reset_email.strip())
-                        st.info("Sprawdź skrzynkę — link do resetu hasła.")
-                    except Exception as exc:  # noqa: BLE001
-                        st.error(f"Nie udało się wysłać linku: {exc}")
-
-    with tab_up:
-        st.caption(
-            "Po rejestracji **potwierdź e-mail** (link z Supabase), "
-            "jeśli w projekcie włączona jest weryfikacja."
-        )
-        email_up = st.text_input("E-mail", key=f"{key_prefix}_signup_email")
-        password_up = st.text_input("Hasło", type="password", key=f"{key_prefix}_signup_pw")
-        if st.button("Utwórz darmowe konto", key=f"{key_prefix}_signup_btn", type="primary", width="stretch"):
-            if not email_up or not password_up:
-                st.error("Podaj e-mail i hasło.")
-            elif len(password_up) < 8:
-                st.error("Hasło musi mieć min. 8 znaków.")
-            else:
-                try:
-                    client = _supabase_client()
-                    resp = client.auth.sign_up(
-                        {"email": email_up.strip(), "password": password_up}
-                    )
-                    if resp.session:
-                        _store_session(resp)
-                        st.success("Konto utworzone!")
-                        st.rerun()
-                    else:
-                        st.info(
-                            "Sprawdź skrzynkę — **potwierdź e-mail**, "
-                            "potem zaloguj się na zakładce Logowanie."
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Rejestracja nie powiodła się: {exc}")
+    if mode == "login":
+        st.markdown("#### Zaloguj się")
+        _render_login_form(key_prefix)
+    elif mode == "signup":
+        st.markdown("#### Załóż darmowe konto")
+        _render_signup_form(key_prefix)
+    else:
+        st.markdown("#### Załóż konto lub zaloguj się")
+        tab_in, tab_up = st.tabs(["Logowanie", "Rejestracja"])
+        with tab_in:
+            _render_login_form(key_prefix)
+        with tab_up:
+            _render_signup_form(key_prefix)
 
     _render_legal_footer()
+
+
+def _render_login_form(key_prefix: str) -> None:
+    email = st.text_input("E-mail", key=f"{key_prefix}_signin_email")
+    password = st.text_input("Hasło", type="password", key=f"{key_prefix}_signin_pw")
+    if st.button(
+        "Zaloguj i otwórz Radar",
+        key=f"{key_prefix}_signin_btn",
+        type="primary",
+        width="stretch",
+    ):
+        if not email or not password:
+            st.error("Podaj e-mail i hasło.")
+        else:
+            try:
+                client = _supabase_client()
+                resp = client.auth.sign_in_with_password(
+                    {"email": email.strip(), "password": password}
+                )
+                _store_session(resp)
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Logowanie nie powiodło się: {exc}")
+    with st.expander("Zapomniałeś hasła?"):
+        reset_email = st.text_input("E-mail do resetu", key=f"{key_prefix}_reset_email")
+        if st.button("Wyślij link resetujący", key=f"{key_prefix}_reset_btn"):
+            if not reset_email.strip():
+                st.error("Podaj e-mail.")
+            else:
+                try:
+                    client = _supabase_client()
+                    client.auth.reset_password_for_email(reset_email.strip())
+                    st.info("Sprawdź skrzynkę — link do resetu hasła.")
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Nie udało się wysłać linku: {exc}")
+
+
+def _render_signup_form(key_prefix: str) -> None:
+    st.caption(
+        "Po rejestracji **potwierdź e-mail** (link z Supabase), "
+        "jeśli w projekcie włączona jest weryfikacja."
+    )
+    email_up = st.text_input("E-mail", key=f"{key_prefix}_signup_email")
+    password_up = st.text_input("Hasło", type="password", key=f"{key_prefix}_signup_pw")
+    if st.button(
+        "Utwórz darmowe konto",
+        key=f"{key_prefix}_signup_btn",
+        type="primary",
+        width="stretch",
+    ):
+        if not email_up or not password_up:
+            st.error("Podaj e-mail i hasło.")
+        elif len(password_up) < 8:
+            st.error("Hasło musi mieć min. 8 znaków.")
+        else:
+            try:
+                client = _supabase_client()
+                resp = client.auth.sign_up(
+                    {"email": email_up.strip(), "password": password_up}
+                )
+                if resp.session:
+                    _store_session(resp)
+                    st.success("Konto utworzone!")
+                    st.rerun()
+                else:
+                    st.info(
+                        "Sprawdź skrzynkę — **potwierdź e-mail**, "
+                        "potem zaloguj się na zakładce Logowanie."
+                    )
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Rejestracja nie powiodła się: {exc}")
 
 
 def render_auth_sidebar() -> None:

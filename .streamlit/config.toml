@@ -5,14 +5,14 @@ headless = true
 [browser]
 gatherUsageStats = false
 
-# Opportunity Teal — trust (teal) + action (amber accents). Tuned for SaaS engagement.
+# Midnight Intel — indigo brand + emerald opportunity on slate-blue dark
 [theme]
 base = "dark"
-primaryColor = "#2DD4BF"
-backgroundColor = "#0A1018"
-secondaryBackgroundColor = "#141C2B"
-textColor = "#F1F5F9"
-linkColor = "#5EEAD4"
-borderColor = "#243047"
+primaryColor = "#818CF8"
+backgroundColor = "#0F1219"
+secondaryBackgroundColor = "#1C2233"
+textColor = "#F0F2F7"
+linkColor = "#A5B4FC"
+borderColor = "#2E3650"
 font = "sans-serif"
 baseFontSize = 15
