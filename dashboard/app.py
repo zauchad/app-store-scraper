@@ -33,6 +33,8 @@ except Exception:  # noqa: BLE001
     pass
 
 import dashboard.ui as ui  # noqa: E402
+from dashboard.landing_page import render_landing_page  # noqa: E402
+from dashboard.theme import inject_global_styles, PRIMARY, DANGER, ACCENT_SOFT  # noqa: E402
 from src.analysis.candidates import rank_candidates  # noqa: E402
 from src.analysis.estimates import lifetime_installs  # noqa: E402
 from src.config import settings  # noqa: E402
@@ -56,7 +58,8 @@ from src.reporting import (  # noqa: E402
     young_winners_df,
 )
 from dashboard.account_page import page_account  # noqa: E402
-from dashboard.auth import render_auth_sidebar, render_payment_banner  # noqa: E402
+from dashboard.auth import is_logged_in, render_auth_sidebar, render_payment_banner  # noqa: E402
+from src.billing.credits import monetization_active  # noqa: E402
 from dashboard.billing_ui import (  # noqa: E402
     is_content_unlocked,
     limit_radar_apps,
@@ -92,37 +95,8 @@ st.set_page_config(
 
 init_db()
 
-# --------------------------------------------------------------------------- #
-#  Light-touch styling — cards for metrics + comfortable spacing.
-#  Everything else is left to the native theme (see .streamlit/config.toml).
-# --------------------------------------------------------------------------- #
-st.markdown(
-    """
-    <style>
-      .block-container { max-width: 1240px; padding-top: 2.2rem; }
-
-      /* Metrics rendered as tidy cards */
-      div[data-testid="stMetric"] {
-        background: var(--secondary-background-color, #171C29);
-        border: 1px solid rgba(255,255,255,.06);
-        border-radius: 14px;
-        padding: 14px 16px 12px;
-      }
-      div[data-testid="stMetricLabel"] p { font-size: .82rem; opacity: .75; }
-      div[data-testid="stMetricValue"] { font-size: 1.55rem; }
-
-      /* Native top navigation: pill-style links */
-      div[data-testid="stNavSectionHeader"] { display: none; }
-
-      /* Dataframes a touch softer */
-      div[data-testid="stDataFrame"] { border-radius: 12px; }
-
-      /* Tighten expander/heading rhythm */
-      h3, h4 { letter-spacing: -.01em; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# Global theme — see dashboard/theme.py + .streamlit/config.toml
+inject_global_styles(landing=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +240,7 @@ def style_fig(fig: go.Figure, height: int = 420) -> go.Figure:
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(255,255,255,0.02)",
-        font=dict(color="#E7EAF3"),
+        font=dict(color="#F1F5F9"),
         legend=dict(bgcolor="rgba(0,0,0,0)"),
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zerolinecolor="rgba(255,255,255,0.1)")
@@ -417,7 +391,7 @@ def page_radar() -> None:
         st.markdown("#### Ranking Opportunity Score")
         st.caption("Czerwony = rynek gigantów (2+ apki >3 mln ocen).")
         rank = df.head(12).sort_values("opportunity_score")
-        colors = ["#EF4444" if m >= 2 else "#22C55E"
+        colors = [DANGER if m >= 2 else PRIMARY
                   for m in rank["mega_incumbents"].fillna(0)]
         fig2 = go.Figure(go.Bar(
             x=rank["opportunity_score"], y=rank["category"], orientation="h",
@@ -660,7 +634,7 @@ def page_deep() -> None:
         })
         figc = go.Figure(go.Bar(
             x=comp["Wartość"], y=comp["Składnik"], orientation="h",
-            marker_color="#7C5CFC",
+            marker_color=PRIMARY,
             text=[f"{v:.2f}" for v in comp["Wartość"]], textposition="outside"))
         figc.update_layout(xaxis_range=[0, 1])
         st.plotly_chart(style_fig(figc, 240), use_container_width=True)
@@ -672,7 +646,7 @@ def page_deep() -> None:
             st.markdown("#### Trend jakości konkurencji")
             figt = go.Figure(go.Scatter(
                 x=hist["date"], y=hist["avg_rating"],
-                mode="lines+markers", line=dict(color="#F59E0B")))
+                mode="lines+markers", line=dict(color=ACCENT_SOFT)))
             figt.update_layout(yaxis_title="Śr. ocena")
             st.plotly_chart(style_fig(figt, 210), use_container_width=True)
             delta = hist["avg_rating"].iloc[-1] - hist["avg_rating"].iloc[0]
@@ -812,7 +786,7 @@ def page_deep() -> None:
                 ).sort_values("share")
                 figp = go.Figure(go.Bar(
                     x=tdf["share"], y=tdf["theme"], orientation="h",
-                    marker_color="#F97316",
+                    marker_color=ACCENT_SOFT,
                     text=[f"{s * 100:.0f}%" for s in tdf["share"]],
                     textposition="outside"))
                 figp.update_layout(
@@ -1364,6 +1338,11 @@ def page_digest() -> None:
 # --------------------------------------------------------------------------- #
 render_payment_banner()
 render_sidebar()
+
+if monetization_active() and not is_logged_in():
+    inject_global_styles(landing=True)
+    render_landing_page()
+    st.stop()
 
 _nav_pages = [
     st.Page(page_radar, title="Radar", icon=":material/radar:", default=True),

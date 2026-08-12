@@ -5,14 +5,14 @@ headless = true
 [browser]
 gatherUsageStats = false
 
-# Modern, high-contrast dark theme. All colors chosen for AA-readable contrast.
+# Opportunity Teal — trust (teal) + action (amber accents). Tuned for SaaS engagement.
 [theme]
 base = "dark"
-primaryColor = "#7C5CFC"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#171C29"
-textColor = "#E7EAF3"
-linkColor = "#9B8CFF"
-borderColor = "#2A3145"
+primaryColor = "#2DD4BF"
+backgroundColor = "#0A1018"
+secondaryBackgroundColor = "#141C2B"
+textColor = "#F1F5F9"
+linkColor = "#5EEAD4"
+borderColor = "#243047"
 font = "sans-serif"
 baseFontSize = 15
