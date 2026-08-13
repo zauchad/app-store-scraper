@@ -1,65 +1,90 @@
-"""Global visual theme — Midnight Intel palette for Market Intel SaaS.
+"""Global visual theme — Daylight Intel palette for Market Intel SaaS.
 
-Color strategy (research / analytics product for app founders):
-  • Indigo/violet — brand, trust, „inteligencja danych” (Amplitude, Linear)
+Light analytics theme: paper-white surfaces, indigo brand, data hues stepped dark
+enough to hold their own on white.
+
+Every value here is computed, not eyeballed (see the dataviz validator):
+  • Mark colors clear 3:1 against the white card surface.
+  • Text colors clear 4.5:1 against BOTH the page and the inset surface, which is
+    why each data hue has a darker `*_TEXT` step — emerald-600 is a fine bar fill
+    but too light for 13px bold type.
+  • CHART_OPPORTUNITY_SCALE is a single-hue emerald ramp, light→dark (low→high):
+    monotone lightness, ΔL ≥ 0.06 per step, light end ≥ 2:1 on white.
+  • Known and accepted: amber (CAUTION) and rose (PAIN) collide under deuteranopia
+    (ΔE 4.7). They are *status* colors here and never appear as color alone — every
+    verdict carries its STRONG/WATCH/SKIP label, so identity survives.
+
+Color roles:
+  • Indigo — brand, actions, links, nav
   • Emerald — okazje, pozytywne sygnały, STRONG verdict
-  • Sky blue — eksploracja, wykresy trendów, geo-radar
-  • Amber — ostrożność, WATCH, średnie sygnały
+  • Sky — eksploracja, wykresy trendów, geo-radar
+  • Amber — ostrożność, WATCH
   • Rose — ból użytkowników, giganci, SKIP, pain mining
-  • Slate-blue backgrounds — głębia bez czystej czerni
 """
 from __future__ import annotations
 
 import streamlit as st
 
-# ---- Surfaces (slate-blue dark, not pure black) ----
-BG = "#0F1219"
-BG_SURFACE = "#161B26"
-BG_CARD = "#1C2233"
-BG_ELEVATED = "#232A3D"
-BORDER = "#2E3650"
-BORDER_SUBTLE = "#252B3D"
+# ---- Surfaces (paper white on a faintly cool page) ----
+BG = "#F7F8FA"             # page
+BG_SURFACE = "#F1F3F7"     # insets: table headers, wells
+BG_CARD = "#FFFFFF"        # cards, metrics, bordered containers
+BG_ELEVATED = "#FFFFFF"
+BORDER = "#DDE1E9"
+BORDER_SUBTLE = "#E9ECF2"
+SHADOW_SM = "0 1px 2px rgba(20, 22, 28, 0.05)"
+SHADOW_MD = "0 1px 3px rgba(20, 22, 28, 0.07), 0 4px 12px rgba(20, 22, 28, 0.04)"
 
-# ---- Text ----
-TEXT = "#F0F2F7"
-TEXT_SECONDARY = "#A8B0C4"
-TEXT_MUTED = "#6B7590"
+# ---- Text (contrast on page / inset: 17.0 / 16.3 · 7.1 / 6.8 · 5.0 / 4.8) ----
+TEXT = "#14161C"
+TEXT_SECONDARY = "#4B5468"
+TEXT_MUTED = "#5F6B84"
 
 # ---- Brand ----
-BRAND = "#818CF8"          # indigo-400 — primary actions, links, nav
-BRAND_DIM = "#6366F1"      # indigo-500 — hover
-BRAND_GLOW = "rgba(129, 140, 248, 0.15)"
+BRAND = "#4F46E5"          # indigo-600 — 5.9:1 on page, white type on it 6.3:1
+BRAND_DIM = "#4338CA"      # indigo-700 — hover goes *darker* in a light theme
+BRAND_GLOW = "rgba(79, 70, 229, 0.10)"
 PRIMARY = BRAND
 PRIMARY_FG = "#FFFFFF"
-LINK = "#A5B4FC"
+LINK = "#4338CA"
 
-# ---- Semantic (data + verdicts) ----
-OPPORTUNITY = "#34D399"    # emerald-400 — good niches, success
-INSIGHT = "#38BDF8"        # sky-400 — trends, secondary charts
-CAUTION = "#FBBF24"        # amber-400 — watch / moderate
-PAIN = "#FB7185"           # rose-400 — pain mining, giants, skip
+# ---- Semantic marks (fills, borders, chart series) ----
+OPPORTUNITY = "#059669"    # emerald-600 — good niches, success
+INSIGHT = "#0284C7"        # sky-600 — trends, secondary charts
+CAUTION = "#D97706"        # amber-600 — watch / moderate
+PAIN = "#E11D48"           # rose-600 — pain mining, giants, skip
 SUCCESS = OPPORTUNITY
 WARNING = CAUTION
 DANGER = PAIN
+
+# ---- Semantic text (same hues, one step darker so small type stays legible) ----
+OPPORTUNITY_TEXT = "#047857"   # emerald-700
+INSIGHT_TEXT = "#0369A1"       # sky-700
+CAUTION_TEXT = "#B45309"       # amber-700
+PAIN_TEXT = "#BE123C"          # rose-700
 
 # ---- Charts ----
 CHART_PRIMARY = BRAND
 CHART_SECONDARY = INSIGHT
 CHART_OPPORTUNITY_SCALE = [
-    [0, "#312E81"],
-    [0.35, "#6366F1"],
-    [0.7, "#818CF8"],
-    [1, "#34D399"],
+    [0, "#10B981"],
+    [0.33, "#059669"],
+    [0.66, "#047857"],
+    [1, "#064E3B"],
 ]
 CHART_BARS_GOOD = OPPORTUNITY
 CHART_BARS_BAD = PAIN
 CHART_TREND = INSIGHT
 CHART_PAIN = PAIN
+# Plot furniture: recessive on white, unlike the white-on-dark values it replaces.
+CHART_PLOT_BG = "rgba(79, 70, 229, 0.03)"
+CHART_GRID = "rgba(20, 22, 28, 0.07)"
+CHART_ZEROLINE = "rgba(20, 22, 28, 0.16)"
 
 # Legacy aliases
 ACCENT = BRAND
 ACCENT_SOFT = INSIGHT
-ACCENT_MUTED = "#4F46E5"
+ACCENT_MUTED = "#6366F1"
 PRIMARY_DIM = BRAND_DIM
 
 
@@ -98,23 +123,26 @@ def inject_global_styles(*, landing: bool = False) -> None:
       }}
 
       .stApp {{
-        background: linear-gradient(165deg, {BG} 0%, #121827 45%, {BG} 100%);
+        background:
+          radial-gradient(ellipse 80% 50% at 50% -10%, {BRAND_GLOW}, transparent 60%),
+          {BG};
       }}
 
       .block-container {{ max-width: 1200px; padding-top: 2rem; }}
       {landing_extra}
 
       header[data-testid="stHeader"] {{
-        background: rgba(15, 18, 25, 0.88);
+        background: rgba(247, 248, 250, 0.85);
         backdrop-filter: blur(12px);
         border-bottom: 1px solid {BORDER_SUBTLE};
       }}
 
       div[data-testid="stMetric"] {{
-        background: linear-gradient(145deg, {BG_CARD} 0%, {BG_SURFACE} 100%);
+        background: {BG_CARD};
         border: 1px solid {BORDER};
         border-radius: 12px;
         padding: 14px 16px 12px;
+        box-shadow: {SHADOW_SM};
       }}
       div[data-testid="stMetricLabel"] p {{
         font-size: .8rem;
@@ -133,15 +161,19 @@ def inject_global_styles(*, landing: bool = False) -> None:
       }}
       a[data-testid="stPageLink"][aria-current="page"] {{
         background: {BRAND_GLOW} !important;
-        border-color: rgba(129, 140, 248, 0.4) !important;
-        color: {BRAND} !important;
+        border-color: rgba(79, 70, 229, 0.28) !important;
+        color: {BRAND_DIM} !important;
       }}
 
-      div[data-testid="stDataFrame"] {{ border-radius: 10px; }}
+      div[data-testid="stDataFrame"] {{
+        border-radius: 10px;
+        border: 1px solid {BORDER};
+      }}
       div[data-testid="stVerticalBlockBorderWrapper"] {{
         border-color: {BORDER} !important;
         border-radius: 12px;
-        background: {BG_SURFACE};
+        background: {BG_CARD};
+        box-shadow: {SHADOW_SM};
       }}
 
       h1, h2, h3, h4 {{
@@ -152,28 +184,40 @@ def inject_global_styles(*, landing: bool = False) -> None:
 
       div[data-testid="stButton"] button[kind="primary"],
       div[data-testid="stButton"] button[data-testid="baseButton-primary"] {{
-        background: {BRAND_DIM} !important;
-        border: 1px solid rgba(129, 140, 248, 0.5) !important;
+        background: {BRAND} !important;
+        border: 1px solid {BRAND} !important;
         color: {PRIMARY_FG} !important;
         font-weight: 500 !important;
         border-radius: 8px !important;
-        box-shadow: none !important;
+        box-shadow: {SHADOW_SM} !important;
       }}
       div[data-testid="stButton"] button[kind="primary"]:hover {{
-        background: {BRAND} !important;
+        background: {BRAND_DIM} !important;
+        border-color: {BRAND_DIM} !important;
       }}
       div[data-testid="stButton"] button[kind="secondary"] {{
         border-radius: 8px !important;
         border-color: {BORDER} !important;
         background: {BG_CARD} !important;
         color: {TEXT_SECONDARY} !important;
+        box-shadow: {SHADOW_SM} !important;
+      }}
+      div[data-testid="stButton"] button[kind="secondary"]:hover {{
+        border-color: {BRAND} !important;
+        color: {BRAND_DIM} !important;
       }}
 
       a[data-testid="stLinkButton"] {{
-        border-color: rgba(129, 140, 248, 0.35) !important;
+        border-color: rgba(79, 70, 229, 0.3) !important;
         border-radius: 8px !important;
         background: {BG_CARD} !important;
         color: {LINK} !important;
+        box-shadow: {SHADOW_SM} !important;
+      }}
+      a[data-testid="stLinkButton"][kind="primary"] {{
+        background: {BRAND} !important;
+        border-color: {BRAND} !important;
+        color: {PRIMARY_FG} !important;
       }}
 
       /* ---- Landing ---- */
@@ -184,15 +228,16 @@ def inject_global_styles(*, landing: bool = False) -> None:
         border-radius: 16px;
         background:
           radial-gradient(ellipse 70% 55% at 50% -5%, {BRAND_GLOW}, transparent 55%),
-          radial-gradient(ellipse 45% 35% at 85% 90%, rgba(52, 211, 153, 0.07), transparent),
+          radial-gradient(ellipse 45% 35% at 85% 90%, rgba(5, 150, 105, 0.06), transparent),
           {BG_CARD};
         border: 1px solid {BORDER};
+        box-shadow: {SHADOW_MD};
       }}
       .mi-hero-badge {{
         display: inline-block;
         background: {BRAND_GLOW};
-        border: 1px solid rgba(129, 140, 248, 0.35);
-        color: {BRAND};
+        border: 1px solid rgba(79, 70, 229, 0.25);
+        color: {BRAND_DIM};
         font-size: 0.7rem;
         font-weight: 600;
         letter-spacing: 0.1em;
@@ -242,6 +287,7 @@ def inject_global_styles(*, landing: bool = False) -> None:
         border-radius: 12px;
         padding: 1.25rem;
         height: 100%;
+        box-shadow: {SHADOW_SM};
       }}
       .mi-card-accent-brand {{ border-top: 3px solid {BRAND}; }}
       .mi-card-accent-pain {{ border-top: 3px solid {PAIN}; }}
@@ -267,9 +313,9 @@ def inject_global_styles(*, landing: bool = False) -> None:
         border-radius: 5px;
         margin-bottom: 0.55rem;
       }}
-      .mi-tag-brand {{ background: {BRAND_GLOW}; color: {BRAND}; }}
-      .mi-tag-opp {{ background: rgba(52, 211, 153, 0.12); color: {OPPORTUNITY}; }}
-      .mi-tag-sky {{ background: rgba(56, 189, 248, 0.12); color: {INSIGHT}; }}
+      .mi-tag-brand {{ background: {BRAND_GLOW}; color: {BRAND_DIM}; }}
+      .mi-tag-opp {{ background: rgba(5, 150, 105, 0.10); color: {OPPORTUNITY_TEXT}; }}
+      .mi-tag-sky {{ background: rgba(2, 132, 199, 0.10); color: {INSIGHT_TEXT}; }}
 
       .mi-step-num {{
         display: inline-flex;
@@ -278,7 +324,7 @@ def inject_global_styles(*, landing: bool = False) -> None:
         width: 1.75rem;
         height: 1.75rem;
         background: {BRAND_GLOW};
-        color: {BRAND};
+        color: {BRAND_DIM};
         border-radius: 8px;
         font-size: 0.7rem;
         font-weight: 700;
@@ -292,6 +338,8 @@ def inject_global_styles(*, landing: bool = False) -> None:
         border: 1px solid {BORDER};
         border-radius: 12px;
         overflow: hidden;
+        background: {BG_CARD};
+        box-shadow: {SHADOW_SM};
       }}
       .mi-price-table th, .mi-price-table td {{
         padding: 0.7rem 1rem;
@@ -306,18 +354,18 @@ def inject_global_styles(*, landing: bool = False) -> None:
         text-transform: uppercase;
       }}
       .mi-price-table tr:last-child td {{ border-bottom: none; }}
-      .mi-price-highlight {{ color: {OPPORTUNITY}; font-weight: 600; }}
+      .mi-price-highlight {{ color: {OPPORTUNITY_TEXT}; font-weight: 600; }}
 
       /* Locked rows on the pre-login teaser: readable shape, unreadable content. */
       .mi-blur td {{
         filter: blur(4.5px);
-        opacity: 0.55;
+        opacity: 0.45;
         user-select: none;
       }}
 
       .mi-cta-box {{
-        background: linear-gradient(135deg, {BRAND_GLOW} 0%, rgba(52, 211, 153, 0.08) 100%);
-        border: 1px solid rgba(129, 140, 248, 0.3);
+        background: linear-gradient(135deg, {BRAND_GLOW} 0%, rgba(5, 150, 105, 0.07) 100%);
+        border: 1px solid rgba(79, 70, 229, 0.22);
         border-radius: 14px;
         padding: 2rem 1.5rem;
         text-align: center;
@@ -327,15 +375,16 @@ def inject_global_styles(*, landing: bool = False) -> None:
       .mi-cta-box p {{ color: {TEXT_SECONDARY}; margin: 0; font-size: 0.875rem; }}
 
       .mi-callout {{
-        background: {BG_SURFACE};
+        background: {BG_CARD};
         border: 1px solid {BORDER};
         border-left: 4px solid {OPPORTUNITY};
         border-radius: 12px;
         padding: 1.25rem;
         margin-top: 1.5rem;
+        box-shadow: {SHADOW_SM};
       }}
-      .mi-stat-bad {{ color: {PAIN}; font-weight: 600; }}
-      .mi-stat-good {{ color: {OPPORTUNITY}; font-weight: 600; }}
+      .mi-stat-bad {{ color: {PAIN_TEXT}; font-weight: 600; }}
+      .mi-stat-good {{ color: {OPPORTUNITY_TEXT}; font-weight: 600; }}
       .mi-tier-note {{ margin-top: 0.6rem; font-size: 0.75rem; color: {TEXT_MUTED}; }}
     </style>
     """,

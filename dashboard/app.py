@@ -40,8 +40,11 @@ from dashboard.theme import (  # noqa: E402
     CHART_OPPORTUNITY_SCALE,
     CHART_BARS_GOOD,
     CHART_BARS_BAD,
+    CHART_GRID,
+    CHART_PLOT_BG,
     CHART_TREND,
     CHART_PAIN,
+    CHART_ZEROLINE,
     TEXT,
 )
 from src.analysis.candidates import rank_candidates  # noqa: E402
@@ -294,12 +297,12 @@ def style_fig(fig: go.Figure, height: int = 420) -> go.Figure:
         height=height,
         margin=dict(l=10, r=10, t=10, b=10),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(129, 140, 248, 0.04)",
+        plot_bgcolor=CHART_PLOT_BG,
         font=dict(color=TEXT),
         legend=dict(bgcolor="rgba(0,0,0,0)"),
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.08)")
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.08)")
+    fig.update_xaxes(gridcolor=CHART_GRID, zerolinecolor=CHART_ZEROLINE)
+    fig.update_yaxes(gridcolor=CHART_GRID, zerolinecolor=CHART_ZEROLINE)
     return fig
 
 
@@ -444,13 +447,17 @@ def page_radar() -> None:
         st.plotly_chart(style_fig(fig, 470), use_container_width=True)
     with right:
         st.markdown("#### Ranking Opportunity Score")
-        st.caption("Czerwony = rynek gigantów (2+ apki >3 mln ocen).")
+        st.caption("Czerwony i 🛑 = rynek gigantów (2+ apki >3 mln ocen).")
         rank = df.head(12).sort_values("opportunity_score")
-        colors = [CHART_BARS_BAD if m >= 2 else CHART_BARS_GOOD
-                  for m in rank["mega_incumbents"].fillna(0)]
+        giants = [m >= 2 for m in rank["mega_incumbents"].fillna(0)]
+        colors = [CHART_BARS_BAD if g else CHART_BARS_GOOD for g in giants]
+        # 🛑 duplicates the red/green split in a non-color channel: those two hues
+        # are indistinguishable under deuteranopia (validated ΔE 5.8).
+        labels = [f"{v:.0f} 🛑" if g else f"{v:.0f}"
+                  for v, g in zip(rank["opportunity_score"], giants)]
         fig2 = go.Figure(go.Bar(
             x=rank["opportunity_score"], y=rank["category"], orientation="h",
-            marker_color=colors, text=[f"{v:.0f}" for v in rank["opportunity_score"]],
+            marker_color=colors, text=labels,
             textposition="outside"))
         fig2.update_layout(xaxis_title="Opportunity")
         st.plotly_chart(style_fig(fig2, 470), use_container_width=True)
