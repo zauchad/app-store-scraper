@@ -308,6 +308,13 @@ def inject_global_styles(*, landing: bool = False) -> None:
       .mi-price-table tr:last-child td {{ border-bottom: none; }}
       .mi-price-highlight {{ color: {OPPORTUNITY}; font-weight: 600; }}
 
+      /* Locked rows on the pre-login teaser: readable shape, unreadable content. */
+      .mi-blur td {{
+        filter: blur(4.5px);
+        opacity: 0.55;
+        user-select: none;
+      }}
+
       .mi-cta-box {{
         background: linear-gradient(135deg, {BRAND_GLOW} 0%, rgba(52, 211, 153, 0.08) 100%);
         border: 1px solid rgba(129, 140, 248, 0.3);

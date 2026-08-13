@@ -1,15 +1,86 @@
-"""Pre-login product landing — Polish marketing copy + inline signup."""
+"""Pre-login product landing — live proof first, marketing copy second."""
 from __future__ import annotations
 
 import streamlit as st
 
 from dashboard.auth import render_auth_inline
+from src.billing import analytics
+from src.config import settings
 
 _SESSION_AUTH_PANEL = "landing_auth_panel"  # "signup" | "login" | None
+
+_TEASER_ROWS = 5
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _teaser_niches(country: str):
+    """Today's top niches, straight from the DB — proof beats promises.
+
+    Cached and failure-tolerant: an empty DB or a cold Postgres pooler must never
+    take the landing page down.
+    """
+    try:
+        from src.reporting import latest_scores_df
+
+        df = latest_scores_df(country)
+        if df is None or df.empty:
+            return []
+        cols = [c for c in ("category", "opportunity_score") if c in df.columns]
+        if len(cols) < 2:
+            return []
+        rows = df.head(_TEASER_ROWS + 3)[cols].values.tolist()
+        return [(str(name), float(score or 0)) for name, score in rows]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _render_live_teaser() -> None:
+    rows = _teaser_niches(settings.store_country.lower())
+    if not rows:
+        return
+
+    st.markdown(
+        """
+        <div class="mi-section">
+          <div class="mi-section-title">Dzisiejszy Radar — na żywo</div>
+          <div class="mi-section-sub">To realny wynik ostatniego skanu, nie zrzut ekranu.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    visible = rows[:_TEASER_ROWS]
+    hidden = rows[_TEASER_ROWS:]
+    lines = [
+        f'<tr><td>{i}.</td><td>{name}</td>'
+        f'<td class="mi-price-highlight">{score:.0f}/100</td></tr>'
+        for i, (name, score) in enumerate(visible, start=1)
+    ]
+    # Masked server-side, not just blurred in CSS — a locked row must not travel
+    # to the browser in readable form.
+    blurred = [
+        f'<tr class="mi-blur"><td>{i}.</td>'
+        f'<td>{name[0]}{"•" * max(4, len(name) - 1)}</td><td>••/100</td></tr>'
+        for i, (name, _score) in enumerate(hidden, start=len(visible) + 1)
+    ]
+    st.markdown(
+        "<table class='mi-price-table'><thead><tr><th>#</th><th>Nisza</th>"
+        "<th>Opportunity</th></tr></thead><tbody>"
+        + "".join(lines + blurred)
+        + "</tbody></table>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Załóż darmowe konto, aby zobaczyć pełny ranking, rozbicie score "
+        "i analizę recenzji konkurencji."
+    )
 
 
 def render_landing_page() -> None:
     """Full product page shown before login when monetization is active."""
+    if not st.session_state.get("_tracked_landing"):
+        st.session_state["_tracked_landing"] = True
+        analytics.track(analytics.LANDING_VIEW)
     st.markdown(
         """
         <div class="mi-hero">
@@ -20,17 +91,22 @@ def render_landing_page() -> None:
             i do pięciu konkretnych celów do ulepszenia — bez ręcznego czytania setek recenzji.
           </p>
           <p class="mi-trust">
-            App Store · aktualizacja codziennie · darmowy Radar · bez karty
+            App Store · aktualizacja codziennie · pierwsza analiza gratis · bez karty
           </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    cta_label = (
+        "Załóż konto — pierwsza analiza gratis"
+        if settings.signup_bonus_credits > 0
+        else "Załóż konto — otwórz Radar"
+    )
     c1, c2 = st.columns(2)
     with c1:
         if st.button(
-            "Załóż konto — otwórz Radar",
+            cta_label,
             type="primary",
             use_container_width=True,
             key="landing_cta_primary",
@@ -48,6 +124,8 @@ def render_landing_page() -> None:
     if auth_panel:
         with st.container(border=True):
             render_auth_inline(key_prefix="landing", mode=auth_panel)
+
+    _render_live_teaser()
 
     st.markdown(
         """
@@ -204,40 +282,38 @@ def render_landing_page() -> None:
         unsafe_allow_html=True,
     )
 
+    # Built as one flat string: a blank line inside a raw-HTML block ends it and
+    # Streamlit would print the rest of the table as text.
+    free_scope = "Radar (top 5), podgląd Analizy i Mikro-nisz, 3 skany/dzień"
+    if settings.signup_bonus_credits > 0:
+        free_scope += " <strong>+ 1 pełna analiza gratis</strong>"
+
+    rows = [
+        f"<tr><td>Free</td><td>$0</td><td>{free_scope}</td></tr>",
+        "<tr><td>1 nisza</td><td class='mi-price-highlight'>$19</td>"
+        "<td>Pełna Analiza lub Mikro-nisza — jednorazowo, na zawsze</td></tr>",
+    ]
+    if settings.credit_pack_enabled:
+        rows.append(
+            "<tr><td>5 kredytów</td><td class='mi-price-highlight'>$49</td>"
+            "<td>Pięć odblokowań</td></tr>"
+        )
+    rows.append(
+        "<tr><td><strong>Pro</strong> — najczęściej wybierany</td>"
+        "<td class='mi-price-highlight'>$39/mo</td>"
+        f"<td>{settings.pro_monthly_credits} kredytów/mies. · pełny Radar · CSV · "
+        "anulujesz kiedy chcesz</td></tr>"
+    )
     st.markdown(
-        """
-        <table class="mi-price-table">
-          <thead>
-            <tr><th>Plan</th><th>Cena</th><th>Zakres</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Free</td>
-              <td>$0</td>
-              <td>Radar (top 5), podgląd Analizy i Mikro-nisz, 3 skany/dzień</td>
-            </tr>
-            <tr>
-              <td>1 kredyt</td>
-              <td class="mi-price-highlight">$19</td>
-              <td>Pełna Analiza lub Mikro-nisza — jednorazowo</td>
-            </tr>
-            <tr>
-              <td>5 kredytów</td>
-              <td class="mi-price-highlight">$49</td>
-              <td>Pięć odblokowań (−18% vs pojedyncze)</td>
-            </tr>
-            <tr>
-              <td>Pro</td>
-              <td class="mi-price-highlight">$39/mo</td>
-              <td>15 kredytów/mies. · pełny Radar · CSV</td>
-            </tr>
-          </tbody>
-        </table>
-        """,
+        "<table class='mi-price-table'><thead><tr><th>Plan</th><th>Cena</th>"
+        "<th>Zakres</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>",
         unsafe_allow_html=True,
     )
 
-    st.caption("Płatność dopiero po założeniu konta i wyborze niszy.")
+    st.caption(
+        "Płatność dopiero po założeniu konta i wyborze niszy. "
+        "Dostęp otwiera się automatycznie po zaksięgowaniu — bez czekania na maila."
+    )
 
     st.markdown(
         '<div class="mi-section"><div class="mi-section-title">FAQ</div></div>',
@@ -266,7 +342,18 @@ def render_landing_page() -> None:
         )
     with st.expander("Czy muszę płacić od razu?"):
         st.markdown(
-            "Nie. Załóż konto, przejrzyj Radar. Płatność tylko przy pełnej analizie lub Pro."
+            "Nie. Załóż konto, przejrzyj Radar"
+            + (
+                " i wykorzystaj darmowy kredyt na pierwszą pełną analizę. "
+                "Płacisz dopiero za drugą niszę."
+                if settings.signup_bonus_credits > 0
+                else ". Płatność tylko przy pełnej analizie lub Pro."
+            )
+        )
+    with st.expander("Jak szybko dostanę dostęp po płatności?"):
+        st.markdown(
+            "Natychmiast. Nisza, którą oglądałeś przy zakupie, odblokowuje się sama — "
+            "strona odświeży się, gdy płatność się zaksięguje (zwykle kilka sekund)."
         )
 
     if not auth_panel:

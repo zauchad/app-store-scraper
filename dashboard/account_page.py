@@ -35,11 +35,19 @@ def page_account() -> None:
     remaining = keyword_scans_remaining(user.id)
     c3.metric("Skany mikro-nisz dziś", "∞" if remaining is None else remaining)
 
+    if user.credits_balance > 0 and not list_unlocked_niches(user.id):
+        st.info(
+            f"Masz **{user.credits_balance}** niewykorzystany kredyt. "
+            "Wybierz niszę w **Analiza** lub **Mikro-nisze** i kliknij *Odblokuj* — "
+            "dostęp zostaje na zawsze.",
+            icon=":material/redeem:",
+        )
+
     st.divider()
     st.markdown("#### Odblokowane nisze")
     unlocks = list_unlocked_niches(user.id)
     if not unlocks:
-        st.caption("Brak odblokowań — kup kredyt na stronie Analiza lub Mikro-nisze.")
+        st.caption("Brak odblokowań — wybierz niszę na stronie Analiza lub Mikro-nisze.")
     else:
         for u in unlocks:
             st.markdown(f"- **{format_niche_key(u.niche_key)}** · {u.unlocked_at:%Y-%m-%d}")

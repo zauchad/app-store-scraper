@@ -7,7 +7,15 @@ import uuid
 
 import pytest
 
-from src.billing.credits import PRO_PLAN, FREE_PLAN, ensure_user, get_user, grant_credits, set_user_plan
+from src.billing.credits import (
+    PRO_PLAN,
+    FREE_PLAN,
+    ensure_user,
+    get_user,
+    grant_credits,
+    is_niche_unlocked,
+    set_user_plan,
+)
 from src.billing.lemon_squeezy import handle_webhook, verify_signature
 
 
@@ -89,12 +97,79 @@ def test_webhook_is_idempotent(billing_env):
     assert get_user(uid).credits_balance == 1
 
 
-def test_webhook_missing_user_id_fails(billing_env):
+def test_webhook_without_user_id_resolves_by_email(billing_env):
+    """Bought while logged out, but the e-mail already has an account."""
+    uid = f"wh-{_event_id()}"
+    email = f"{uid}@test.local"
+    ensure_user(uid, email)
+    payload = _order_payload(event_id=_event_id(), user_id=uid, credits=1)
+    payload["meta"]["custom_data"] = {}  # no user_id, only the buyer e-mail
+    result = handle_webhook(payload)
+    assert result["ok"] is True
+    assert result.get("user_id") == uid
+    assert get_user(uid).credits_balance == 1
+
+
+def test_webhook_without_account_parks_credits_until_signup(billing_env):
+    """No account yet: park the payment, then hand it over on first login."""
+    email = f"orphan-{_event_id()}@test.local"
     payload = _order_payload(event_id=_event_id(), credits=1)
     payload["meta"]["custom_data"] = {}
+    payload["data"]["attributes"]["user_email"] = email
+
+    result = handle_webhook(payload)
+    assert result["ok"] is True
+    assert result.get("action") == "parked"
+
+    uid = f"late-{_event_id()}"
+    user = ensure_user(uid, email)
+    assert user.credits_balance == 1
+    # Claimed only once, even if the user logs in again.
+    assert ensure_user(uid, email).credits_balance == 1
+
+
+def test_webhook_without_user_id_or_email_fails(billing_env):
+    payload = _order_payload(event_id=_event_id(), credits=1)
+    payload["meta"]["custom_data"] = {}
+    payload["data"]["attributes"]["user_email"] = ""
     result = handle_webhook(payload)
     assert result["ok"] is False
-    assert "user_id" in result.get("error", "")
+
+
+def test_webhook_auto_unlocks_the_niche_that_triggered_checkout(billing_env):
+    uid = f"wh-{_event_id()}"
+    ensure_user(uid, f"{uid}@test.local")
+    payload = _order_payload(event_id=_event_id(), user_id=uid, credits=1)
+    payload["meta"]["custom_data"]["niche_key"] = "category:us:6015"
+
+    result = handle_webhook(payload)
+    assert result["ok"] is True
+    assert result.get("unlocked") == "category:us:6015"
+    assert is_niche_unlocked(uid, "category:us:6015")
+    # The credit paid for the unlock instead of sitting in the balance.
+    assert get_user(uid).credits_balance == 0
+
+
+def test_failed_grant_leaves_event_retryable(billing_env, monkeypatch):
+    """A mid-flight failure must not mark the payment as processed."""
+    import src.billing.lemon_squeezy as lemon_mod
+
+    uid = f"wh-{_event_id()}"
+    ensure_user(uid, f"{uid}@test.local")
+    payload = _order_payload(event_id=_event_id(), user_id=uid, credits=1)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(lemon_mod, "grant_credits", _boom)
+    with pytest.raises(RuntimeError):
+        handle_webhook(payload)
+
+    monkeypatch.undo()
+    result = handle_webhook(payload)  # Lemon Squeezy retry
+    assert result["ok"] is True
+    assert result.get("credits") == 1
+    assert get_user(uid).credits_balance == 1
 
 
 def test_subscription_created_activates_pro(billing_env):

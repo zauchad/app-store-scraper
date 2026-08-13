@@ -47,13 +47,24 @@ def run_billing_check(*, strict: bool | None = None) -> CheckResult:
     if not settings.supabase_anon_key.strip():
         res.errors.append("SUPABASE_ANON_KEY is missing (required for login).")
 
+    if not settings.app_base_url.strip():
+        res.warnings.append(
+            "APP_BASE_URL is empty — Google sign-in and e-mail confirmation links "
+            "cannot redirect back into the app."
+        )
+    if settings.auth_google_enabled and not settings.app_base_url.strip():
+        res.errors.append("AUTH_GOOGLE_ENABLED=true requires APP_BASE_URL.")
+
     checkouts = [
         ("LEMONSQUEEZY_CHECKOUT_1_CREDIT", settings.lemonsqueezy_checkout_1_credit),
-        ("LEMONSQUEEZY_CHECKOUT_5_CREDITS", settings.lemonsqueezy_checkout_5_credits),
         ("LEMONSQUEEZY_CHECKOUT_PRO", settings.lemonsqueezy_checkout_pro),
     ]
+    if settings.credit_pack_enabled:
+        checkouts.append(
+            ("LEMONSQUEEZY_CHECKOUT_5_CREDITS", settings.lemonsqueezy_checkout_5_credits)
+        )
     missing_checkouts = [name for name, val in checkouts if not val.strip()]
-    if len(missing_checkouts) == 3:
+    if len(missing_checkouts) == len(checkouts):
         res.errors.append("No Lemon Squeezy checkout URLs configured.")
     elif missing_checkouts:
         res.warnings.append(f"Missing checkout URLs: {', '.join(missing_checkouts)}")
@@ -70,9 +81,12 @@ def run_billing_check(*, strict: bool | None = None) -> CheckResult:
 
     variants = [
         ("LEMONSQUEEZY_VARIANT_1_CREDIT", settings.lemonsqueezy_variant_1_credit, 1),
-        ("LEMONSQUEEZY_VARIANT_5_CREDITS", settings.lemonsqueezy_variant_5_credits, 5),
         ("LEMONSQUEEZY_VARIANT_PRO", settings.lemonsqueezy_variant_pro, "Pro"),
     ]
+    if settings.credit_pack_enabled:
+        variants.append(
+            ("LEMONSQUEEZY_VARIANT_5_CREDITS", settings.lemonsqueezy_variant_5_credits, 5)
+        )
     missing_variants = [name for name, val, _ in variants if not val.strip()]
     if missing_variants:
         res.warnings.append(
@@ -82,6 +96,16 @@ def run_billing_check(*, strict: bool | None = None) -> CheckResult:
 
     if settings.pro_monthly_credits <= 0:
         res.warnings.append("PRO_MONTHLY_CREDITS should be > 0.")
+
+    if settings.signup_bonus_credits <= 0:
+        res.notes.append(
+            "SIGNUP_BONUS_CREDITS=0 — new accounts never see a full report before "
+            "paying. 1 is the recommended value."
+        )
+    else:
+        res.notes.append(
+            f"New accounts get {settings.signup_bonus_credits} free unlock(s)."
+        )
 
     # --- DB schema ---
     try:

@@ -14,13 +14,15 @@ psycopg2-binary>=2.9
 # LLM (provider-agnostic layer; Gemini as default MVP provider)
 google-genai>=1.0
 
-# Dashboard
-streamlit>=1.33
+# Dashboard (>=1.50: st.fragment(run_every=...) for the payment watcher,
+# width="stretch" on buttons)
+streamlit>=1.50
 plotly>=5.20
 pandas>=2.1
 
 # Auth + billing webhooks (Phase 1 monetization)
-supabase>=2.4
+# Supabase Auth is called over plain REST (dashboard/supabase_auth.py) so that
+# OAuth PKCE survives Streamlit reruns — no supabase-py dependency needed.
 fastapi>=0.110
 uvicorn>=0.27
 extra-streamlit-components>=0.1.71

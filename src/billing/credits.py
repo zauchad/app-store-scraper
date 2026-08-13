@@ -4,11 +4,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from src.config import settings
-from src.db.models import CreditLedger, UnlockedNiche, User
+from src.db.models import CreditLedger, PendingGrant, UnlockedNiche, User
 from src.db.session import session_scope
 from src.logging_config import get_logger
 
@@ -43,7 +43,14 @@ def ensure_user(user_id: str, email: str) -> User:
     with session_scope() as session:
         user = session.get(User, user_id)
         if user is None:
-            user = User(id=user_id, email=email.lower().strip())
+            # Column defaults are applied by the INSERT, not by the constructor —
+            # set them here so a bonus grant can do arithmetic before the flush.
+            user = User(
+                id=user_id,
+                email=email.lower().strip(),
+                plan=FREE_PLAN,
+                credits_balance=0,
+            )
             session.add(user)
             if settings.signup_bonus_credits > 0:
                 _apply_delta(
@@ -58,7 +65,83 @@ def ensure_user(user_id: str, email: str) -> User:
         elif user.email != email.lower().strip():
             user.email = email.lower().strip()
             user.updated_at = datetime.utcnow()
+        _claim_pending_grants(session, user)
+        session.flush()
         return user
+
+
+def _claim_pending_grants(session: Session, user: User) -> int:
+    """Apply credits bought before this account existed. Returns credits claimed."""
+    pending = (
+        session.execute(
+            select(PendingGrant).where(
+                PendingGrant.email == user.email,
+                PendingGrant.claimed_at.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    claimed = 0
+    for grant in pending:
+        # Claim the row first, conditional on it still being unclaimed: two
+        # simultaneous logins must not pay out the same purchase twice.
+        won = session.execute(
+            update(PendingGrant)
+            .where(PendingGrant.id == grant.id, PendingGrant.claimed_at.is_(None))
+            .values(claimed_at=datetime.utcnow(), claimed_by=user.id)
+        ).rowcount
+        if not won:
+            continue
+        if grant.credits > 0:
+            _apply_delta(
+                session,
+                user,
+                grant.credits,
+                grant.reason or "pending_grant",
+                reference_id=grant.reference_id,
+            )
+            claimed += grant.credits
+        if grant.plan:
+            user.plan = grant.plan
+        if grant.niche_key:
+            # Same economics as paying while logged in: the credit just bought
+            # pays for the niche the buyer was looking at.
+            try:
+                _unlock_in_session(session, user, grant.niche_key)
+            except ValueError:
+                pass  # not enough credits — user unlocks manually later
+        logger.info(
+            "Claimed pending grant for %s: %d credits, plan=%s",
+            user.email,
+            grant.credits,
+            grant.plan,
+        )
+    return claimed
+
+
+def park_pending_grant(
+    email: str,
+    *,
+    credits: int,
+    plan: Optional[str],
+    reason: str,
+    reference_id: Optional[str],
+    niche_key: Optional[str] = None,
+) -> None:
+    """Store a payment that has no account yet, to be claimed on first login."""
+    with session_scope() as session:
+        session.add(
+            PendingGrant(
+                email=email.lower().strip(),
+                credits=max(0, credits),
+                plan=plan,
+                niche_key=niche_key,
+                reason=reason[:64],
+                reference_id=reference_id,
+            )
+        )
+    logger.info("Parked %d credits for %s (no account yet)", credits, email)
 
 
 def _apply_delta(
@@ -69,7 +152,7 @@ def _apply_delta(
     *,
     reference_id: Optional[str],
 ) -> None:
-    user.credits_balance = max(0, user.credits_balance + delta)
+    user.credits_balance = max(0, (user.credits_balance or 0) + delta)
     user.updated_at = datetime.utcnow()
     session.add(
         CreditLedger(
@@ -207,42 +290,58 @@ def is_niche_unlocked(user_id: Optional[str], key: str) -> bool:
         return hit is not None
 
 
-def unlock_niche(user_id: str, key: str, *, cost: int = CREDIT_COST_NICHE_UNLOCK) -> User:
-    if is_niche_unlocked(user_id, key):
-        user = get_user(user_id)
-        if user is None:
-            raise ValueError(f"unknown user {user_id}")
-        return user
-    with session_scope() as session:
-        existing = session.execute(
-            select(UnlockedNiche).where(
-                UnlockedNiche.user_id == user_id,
-                UnlockedNiche.niche_key == key,
-            )
-        ).scalar_one_or_none()
-        if existing:
-            user = session.get(User, user_id)
-            if user is None:
-                raise ValueError(f"unknown user {user_id}")
-            return user
+def _unlock_in_session(
+    session: Session,
+    user: User,
+    key: str,
+    *,
+    cost: int = CREDIT_COST_NICHE_UNLOCK,
+) -> bool:
+    """Unlock `key` for `user` inside an open transaction. False = already had it."""
+    existing = session.execute(
+        select(UnlockedNiche.id).where(
+            UnlockedNiche.user_id == user.id,
+            UnlockedNiche.niche_key == key,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return False
+    if cost > 0:
+        if user.credits_balance < cost:
+            raise ValueError("insufficient credits")
+        _apply_delta(session, user, -cost, "niche_unlock", reference_id=key)
+    session.add(UnlockedNiche(user_id=user.id, niche_key=key))
+    session.flush()
+    logger.info("Unlocked %s for user %s (cost %d)", key, user.id, cost)
+    return True
 
+
+def unlock_niche(user_id: str, key: str, *, cost: int = CREDIT_COST_NICHE_UNLOCK) -> User:
+    with session_scope() as session:
         user = session.get(User, user_id)
         if user is None:
             raise ValueError(f"unknown user {user_id}")
-        if user.credits_balance < cost:
-            raise ValueError("insufficient credits")
-
-        _apply_delta(
-            session,
-            user,
-            -cost,
-            "niche_unlock",
-            reference_id=key,
-        )
-        session.add(UnlockedNiche(user_id=user_id, niche_key=key))
-        session.flush()
-        logger.info("Unlocked %s for user %s", key, user_id)
+        _unlock_in_session(session, user, key, cost=cost)
         return user
+
+
+def auto_unlock_after_payment(user_id: str, key: str) -> bool:
+    """Spend a credit on the niche the buyer was looking at when they paid.
+
+    Returns True when this call performed the unlock. Silently returns False if
+    the niche is already unlocked or the balance is too low — the user simply
+    keeps the credit and can unlock manually.
+    """
+    if not key:
+        return False
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            return False
+        try:
+            return _unlock_in_session(session, user, key)
+        except ValueError:
+            return False
 
 
 def has_pro_access(user_id: Optional[str]) -> bool:

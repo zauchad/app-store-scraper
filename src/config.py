@@ -108,10 +108,21 @@ class Settings(BaseSettings):
 
     # --- Monetization (Phase 1) -----------------------------------------------
     monetization_enabled: bool = False
-    signup_bonus_credits: int = 0
+    # 1 = every new account can unlock one niche for free. The data is already
+    # computed, so the marginal cost is ~zero and the user sees the paid artifact
+    # once before being asked for money.
+    signup_bonus_credits: int = 1
     pro_monthly_credits: int = 15
     supabase_url: str = ""
     supabase_anon_key: str = ""
+    # Public URL of the dashboard, e.g. https://your-app.streamlit.app — needed
+    # for OAuth / e-mail redirects back into the app.
+    app_base_url: str = ""
+    # Google sign-in. Enable the provider in Supabase first (Auth -> Providers).
+    auth_google_enabled: bool = False
+    # Passwordless 6-digit e-mail codes. Requires {{ .Token }} in the Supabase
+    # "Magic Link" e-mail template (see docs/MONETIZATION.md).
+    auth_otp_enabled: bool = True
     lemonsqueezy_webhook_secret: str = ""
     lemonsqueezy_store_id: str = ""
     lemonsqueezy_variant_1_credit: str = ""
@@ -121,6 +132,10 @@ class Settings(BaseSettings):
     lemonsqueezy_checkout_5_credits: str = ""
     lemonsqueezy_checkout_pro: str = ""
     lemonsqueezy_customer_portal_url: str = ""
+    # The 5-credit pack is dominated by Pro (more credits, lower price), so it is
+    # hidden from the pricing UI by default. Webhooks still honour it for anyone
+    # who bought it earlier. Flip to true if you reprice it above Pro.
+    credit_pack_enabled: bool = False
     billing_admin_secret: str = ""
     free_daily_keyword_scans: int = 3
     support_email: str = ""
@@ -192,6 +207,11 @@ class Settings(BaseSettings):
     @property
     def billing_configured(self) -> bool:
         return bool(self.lemonsqueezy_webhook_secret.strip())
+
+    @property
+    def auth_redirect_url(self) -> str:
+        """Where Supabase should send users back after OAuth / e-mail links."""
+        return self.app_base_url.strip().rstrip("/")
 
 
 @lru_cache(maxsize=1)

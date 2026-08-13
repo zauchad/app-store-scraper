@@ -41,7 +41,8 @@ SUPPORT_PLAYBOOK_PL = """
 ### Płatność przeszła, brak kredytów?
 
 1. Poczekaj **do 2 minut** i kliknij **Odśwież saldo** w panelu bocznym.
-2. Upewnij się, że płatność była **po zalogowaniu** (checkout musi znać Twoje konto).
+2. Jeśli kupowałeś **bez zalogowania** — zaloguj się na e-mail użyty przy płatności;
+   kredyty dopiszą się automatycznie przy pierwszym logowaniu.
 3. W Lemon Squeezy → Webhooks sprawdź, czy event `order_created` ma status **200**.
 4. Jeśli webhook failed — skontaktuj się z nami podając e-mail konta i datę płatności.
    Support może ręcznie dodać kredyty (`python run.py grant-credits`).

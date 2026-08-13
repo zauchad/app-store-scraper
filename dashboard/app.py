@@ -67,7 +67,13 @@ from src.reporting import (  # noqa: E402
     young_winners_df,
 )
 from dashboard.account_page import page_account  # noqa: E402
-from dashboard.auth import init_auth, is_logged_in, render_auth_sidebar, render_payment_banner  # noqa: E402
+from dashboard.auth import (  # noqa: E402
+    init_auth,
+    is_logged_in,
+    render_auth_sidebar,
+    render_password_recovery,
+    render_payment_banner,
+)
 from src.billing.credits import monetization_active  # noqa: E402
 from dashboard.billing_ui import (  # noqa: E402
     is_content_unlocked,
@@ -181,6 +187,46 @@ def load_keyword_scores() -> pd.DataFrame:
 def load_pain_mining(genre_id: int):
     """Full-corpus review mining is heavy (100k+ rows) -> cache for an hour."""
     return pain_mining_for_category(genre_id)
+
+
+def keyword_pain_teaser(krow) -> str:
+    """Same idea as `pain_teaser`, scoped to a micro-niche's competitor set."""
+    apps = krow.get("top_apps") or []
+    app_ids = tuple(int(a["app_id"]) for a in apps if a.get("app_id"))
+    if not app_ids:
+        return ""
+    try:
+        mining = load_pain_mining_apps(app_ids)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not mining or not mining.themes or mining.reviews_negative <= 0:
+        return (
+            f"{len(app_ids)} konkurentów walczy o tę frazę — pełna lista "
+            "z ocenami i wydawcami po odblokowaniu."
+        )
+    top = mining.themes[0]
+    return (
+        f"konkurenci tej frazy najczęściej zawodzą przy **{top.theme}** "
+        f"({top.share * 100:.0f}% negatywnych recenzji). "
+        "Geo-radar, popyt z Reddita i pełna lista konkurentów — po odblokowaniu."
+    )
+
+
+def pain_teaser(genre_id: int) -> str:
+    """One real finding from behind the paywall — a concrete promise beats bullets."""
+    try:
+        mining = load_pain_mining(genre_id)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not mining or not mining.themes or mining.reviews_negative <= 0:
+        return ""
+    top = mining.themes[0]
+    return (
+        f"najczęstszy ból konkurencji to **{top.theme}** — "
+        f"{top.share * 100:.0f}% negatywnych recenzji "
+        f"(z {num(mining.reviews_total)} przeanalizowanych). "
+        "Pełna lista tematów, cytaty i apki najbardziej znienawidzone — po odblokowaniu."
+    )
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -536,7 +582,6 @@ def page_deep() -> None:
     choice = st.selectbox("Wybierz niszę", names, index=0, format_func=_fmt)
     row = df[df["category"] == choice].iloc[0]
     genre_id = int(row["genre_id"])
-    cc = report_country()
     nk = billing_niche_key(kind="category", country=cc, identifier=genre_id)
     full_access = is_content_unlocked(nk)
     level, expl = verdict(row)
@@ -628,8 +673,11 @@ def page_deep() -> None:
     st.caption(f"📦 **Skala rynku (heurystyka):** typowa apka to **{typ_band}** "
                f"instalacji (lifetime), szacowane rzędem wielkości z liczby ocen.")
 
-    nk = billing_niche_key(kind="category", country=cc, identifier=genre_id)
-    if not render_unlock_gate(niche_key=nk, niche_label=choice):
+    if not render_unlock_gate(
+        niche_key=nk,
+        niche_label=choice,
+        teaser="" if full_access else pain_teaser(genre_id),
+    ):
         return
 
     st.divider()
@@ -1214,7 +1262,12 @@ def page_micro() -> None:
 
     cc = report_country()
     kw_key = keyword_niche_key(picked, cc)
-    if not render_unlock_gate(niche_key=kw_key, niche_label=picked, content="mikro-nisza"):
+    if not render_unlock_gate(
+        niche_key=kw_key,
+        niche_label=picked,
+        content="mikro-nisza",
+        teaser="" if is_content_unlocked(kw_key) else keyword_pain_teaser(krow),
+    ):
         return
 
     # Geo arbitrage: the same niche can be besieged in the US and open in DE/PL.
@@ -1352,7 +1405,10 @@ render_payment_banner()
 
 if _on_landing:
     inject_global_styles(landing=True)
-    render_landing_page()
+    # A recovery link must be finishable before anything else, otherwise the user
+    # is stuck on the landing page with a valid token and nowhere to use it.
+    if not render_password_recovery():
+        render_landing_page()
     st.stop()
 
 render_sidebar()

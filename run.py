@@ -89,6 +89,9 @@ def main(argv=None) -> int:
         help="Webhook event to simulate",
     )
 
+    p_funnel = sub.add_parser("funnel", help="Signup → paywall → purchase conversion")
+    p_funnel.add_argument("--days", type=int, default=30)
+
     p_grant = sub.add_parser("grant-credits", help="Admin: grant credits by user email")
     p_grant.add_argument("--email", type=str, required=True)
     p_grant.add_argument("--amount", type=int, required=True)
@@ -209,6 +212,14 @@ def main(argv=None) -> int:
         res = run_billing_check(strict=args.strict)
         print(format_check_report(res))
         return 0 if res.ok else 1
+
+    if args.command == "funnel":
+        from src.billing.analytics import format_funnel_report, paying_users
+
+        init_db()
+        print(format_funnel_report(days=args.days))
+        print(f"\nUżytkownicy z dodatnim saldem kredytów: {paying_users()}")
+        return 0
 
     if args.command == "grant-credits":
         from src.billing.admin import grant_credits_admin

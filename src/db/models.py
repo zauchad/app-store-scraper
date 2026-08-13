@@ -391,3 +391,43 @@ class DailyUsage(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     usage_date: Mapped[str] = mapped_column(String(10), index=True)  # YYYY-MM-DD
     keyword_scans: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PendingGrant(Base):
+    """Paid credits waiting for an account.
+
+    Analytical purpose: a purchase made outside a logged-in session (Product Hunt
+    link, shared pricing page) has no Supabase user_id. Instead of dropping the
+    payment we park it on the buyer's e-mail and claim it the moment that e-mail
+    logs in for the first time.
+    """
+
+    __tablename__ = "pending_grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    credits: Mapped[int] = mapped_column(Integer, default=0)
+    plan: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    niche_key: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    reason: Mapped[str] = mapped_column(String(64), default="")
+    reference_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    claimed_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
+
+class FunnelEvent(Base):
+    """Signup → paywall → purchase funnel steps.
+
+    Analytical purpose: the only way to tell *where* buyers drop off. Deliberately
+    minimal (no PII beyond the user id) and written fire-and-forget: a failed
+    insert must never break a page render or a webhook.
+    """
+
+    __tablename__ = "funnel_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    detail: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), index=True)

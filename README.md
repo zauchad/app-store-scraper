@@ -412,17 +412,30 @@ konfiguracja — zero zmian w kodzie pipeline'u/dashboardu.
 - Google Play jako drugie źródło (cross-platform walidacja niszy).
 - Alerty (Slack/e-mail) gdy nowa nisza przekroczy próg Opportunity Score.
 
-## Monetyzacja (Phase 1)
+## Monetyzacja
 
 System kredytów + odblokowanie pełnej **Analizy** (1 kredyt/nisza) oraz plan **Pro**
 (CSV + 15 kredytów/mies.). Lokalnie wyłączone domyślnie (`MONETIZATION_ENABLED=false`).
 
+Jak wygląda ścieżka zakupu:
+
+1. **Landing** pokazuje dzisiejszy Radar na żywo (top 5 realnych nisz, reszta zasłonięta).
+2. **Rejestracja** — Google jednym kliknięciem albo kod z e-maila (bez hasła);
+   nowe konto dostaje **1 darmowe odblokowanie** (`SIGNUP_BONUS_CREDITS=1`).
+3. **Paywall** pokazuje konkretny sygnał z zamkniętej części (np. najczęstszy ból
+   z recenzji konkurencji), nie samą listę obietnic.
+4. **Zakup** — link checkout niesie e-mail kupującego i klucz niszy, więc webhook
+   **odblokowuje dokładnie tę niszę**, a otwarta karta odświeża się sama.
+   Zakup bez zalogowania trafia do `pending_grants` i jest przyznawany przy
+   pierwszym logowaniu na ten e-mail.
+
 **Pełna instrukcja go-live:** [docs/MONETIZATION.md](docs/MONETIZATION.md)
 
-Szybka walidacja konfiguracji:
+Szybka walidacja konfiguracji i konwersji:
 
 ```bash
 python run.py billing-check --strict
 python run.py billing-check --simulate-webhook --user-id YOUR_SUPABASE_UUID
+python run.py funnel --days 30      # rejestracja → paywall → zakup
 pytest tests/ -v
 ```
